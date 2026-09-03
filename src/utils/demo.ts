@@ -1,10 +1,13 @@
-import type { KeyframeSlide } from '../types';
+import type { SceneStop } from '../types';
 
 /**
- * Generates an interactive presentation video using HTML5 Canvas & MediaRecorder.
- * Duration: 16 seconds (4 slides, 4 seconds each).
+ * Generates an interactive continuous animation video showing seamless transitions
+ * between 4 scenes: 0s, 4s, 8s, 12s.
  */
-export async function generateDemoVideo(): Promise<{ videoUrl: string; slides: KeyframeSlide[] }> {
+export async function generateContinuousDemoVideo(): Promise<{
+  videoUrl: string;
+  scenes: SceneStop[];
+}> {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     canvas.width = 1280;
@@ -16,35 +19,11 @@ export async function generateDemoVideo(): Promise<{ videoUrl: string; slides: K
       return;
     }
 
-    const slideData = [
-      {
-        timestamp: 0,
-        title: '01: Introduction to Video-to-Slide',
-        subtitle: 'Effortless Keyframe Extraction & Navigation',
-        detail: 'Transform any video into structured, presentable slides with exact keyframe stops.',
-        notes: 'Welcome everyone! In this presentation we showcase the power of keyframe stop points in video playback.',
-      },
-      {
-        timestamp: 4,
-        title: '02: How Keyframe Stops Work',
-        subtitle: 'Precision Timeline Scrubbing',
-        detail: 'Pause at any exact frame, register keyframe stops, and preview as seamless slides.',
-        notes: 'Every keyframe records the exact timestamp and a high-resolution snapshot for instant PowerPoint-style browsing.',
-      },
-      {
-        timestamp: 8,
-        title: '03: Presentation Preview & Navigation',
-        subtitle: 'Keyboard Arrow Navigation',
-        detail: 'Use Left / Right arrow keys to jump between keyframes just like a PowerPoint deck.',
-        notes: 'You can navigate with arrow keys, toggle speaker notes, or play video between keyframe stops.',
-      },
-      {
-        timestamp: 12,
-        title: '04: Summary & Export Options',
-        subtitle: 'Ready for Desktop & Presentation',
-        detail: 'Export your slides as images, save your project file, or present in full screen.',
-        notes: 'Thank you for exploring this app! Easily add your own videos and images anytime.',
-      }
+    const defaultScenes: SceneStop[] = [
+      { id: 'scene-1', name: 'Scene 1: Introduction', timestamp: 0 },
+      { id: 'scene-2', name: 'Scene 2: Core Concept', timestamp: 4 },
+      { id: 'scene-3', name: 'Scene 3: Navigation Flow', timestamp: 8 },
+      { id: 'scene-4', name: 'Scene 4: Summary', timestamp: 12 },
     ];
 
     const stream = canvas.captureStream(30);
@@ -66,22 +45,7 @@ export async function generateDemoVideo(): Promise<{ videoUrl: string; slides: K
     recorder.onstop = () => {
       const blob = new Blob(chunks, { type: mimeType });
       const videoUrl = URL.createObjectURL(blob);
-
-      // Generate keyframe slides with snapshot images rendered from canvas
-      const generatedSlides: KeyframeSlide[] = slideData.map((item, idx) => {
-        drawFrame(ctx, item, 0, idx + 1);
-        const imageUrl = canvas.toDataURL('image/jpeg', 0.9);
-        return {
-          id: `demo-slide-${idx + 1}`,
-          timestamp: item.timestamp,
-          title: item.title,
-          notes: item.notes,
-          imageUrl,
-          createdAt: Date.now() + idx,
-        };
-      });
-
-      resolve({ videoUrl, slides: generatedSlides });
+      resolve({ videoUrl, scenes: defaultScenes });
     };
 
     recorder.start();
@@ -89,103 +53,102 @@ export async function generateDemoVideo(): Promise<{ videoUrl: string; slides: K
     const totalSeconds = 16;
     const fps = 30;
     const totalFrames = totalSeconds * fps;
-    let frameCount = 0;
-
-    function drawFrame(
-      c: CanvasRenderingContext2D,
-      item: typeof slideData[0],
-      progress: number,
-      slideNumber: number
-    ) {
-      // Background: clean dark background #1e1e1e (no gradients!)
-      c.fillStyle = '#1e1e1e';
-      c.fillRect(0, 0, 1280, 720);
-
-      // Top accent banner: single solid color #007acc
-      c.fillStyle = '#007acc';
-      c.fillRect(0, 0, 1280, 8);
-
-      // VS Code style header area
-      c.fillStyle = '#252526';
-      c.fillRect(40, 40, 1200, 640);
-      c.strokeStyle = '#333333';
-      c.lineWidth = 1;
-      c.strokeRect(40, 40, 1200, 640);
-
-      // Slide number badge
-      c.fillStyle = '#007acc';
-      c.fillRect(80, 80, 120, 36);
-      c.fillStyle = '#ffffff';
-      c.font = 'bold 16px "Segoe UI", sans-serif';
-      c.textAlign = 'center';
-      c.fillText(`SLIDE ${slideNumber} / 4`, 140, 104);
-
-      // Title
-      c.fillStyle = '#ffffff';
-      c.font = 'bold 36px "Segoe UI", sans-serif';
-      c.textAlign = 'left';
-      c.fillText(item.title, 80, 170);
-
-      // Subtitle
-      c.fillStyle = '#007acc';
-      c.font = '600 22px "Segoe UI", sans-serif';
-      c.fillText(item.subtitle, 80, 215);
-
-      // Divider line
-      c.fillStyle = '#333333';
-      c.fillRect(80, 240, 1120, 2);
-
-      // Content Box
-      c.fillStyle = '#1e1e1e';
-      c.fillRect(80, 270, 1120, 240);
-      c.strokeStyle = '#383838';
-      c.strokeRect(80, 270, 1120, 240);
-
-      c.fillStyle = '#cccccc';
-      c.font = '20px "Segoe UI", sans-serif';
-      c.fillText(item.detail, 110, 330);
-
-      // Bullet points
-      const bullets = [
-        `Keyframe timestamp: ${item.timestamp.toFixed(1)}s`,
-        'Use Left / Right arrow keys to navigate slides',
-        'Add, edit, or delete keyframes directly in the sidebar'
-      ];
-      bullets.forEach((bullet, bIdx) => {
-        c.fillStyle = '#007acc';
-        c.fillRect(110, 370 + bIdx * 34, 8, 8);
-        c.fillStyle = '#a0a0a0';
-        c.font = '16px "Segoe UI", sans-serif';
-        c.fillText(bullet, 130, 380 + bIdx * 34);
-      });
-
-      // Animated progress indicator at bottom of slide
-      const barWidth = 1120;
-      c.fillStyle = '#2d2d2d';
-      c.fillRect(80, 600, barWidth, 10);
-      c.fillStyle = '#007acc';
-      c.fillRect(80, 600, barWidth * progress, 10);
-
-      // Timecode watermark
-      c.fillStyle = '#888888';
-      c.font = '14px monospace';
-      c.textAlign = 'right';
-      c.fillText(`Time: ${(slideNumber * 4 - 4 + progress * 4).toFixed(2)}s`, 1200, 640);
-    }
+    let frame = 0;
 
     const interval = setInterval(() => {
-      const currentSecond = frameCount / fps;
-      const slideIndex = Math.min(3, Math.floor(currentSecond / 4));
-      const currentItem = slideData[slideIndex];
-      const slideProgress = (currentSecond % 4) / 4;
-
-      drawFrame(ctx, currentItem, slideProgress, slideIndex + 1);
-
-      frameCount++;
-      if (frameCount >= totalFrames) {
+      const time = frame / fps;
+      renderFrame(ctx, time);
+      frame++;
+      if (frame >= totalFrames) {
         clearInterval(interval);
         recorder.stop();
       }
     }, 1000 / fps);
+
+    function renderFrame(c: CanvasRenderingContext2D, t: number) {
+      // Solid neutral dark background #1a1a1a (no gradient)
+      c.fillStyle = '#1a1a1a';
+      c.fillRect(0, 0, 1280, 720);
+
+      // Section calculation (each scene is 4 seconds)
+      const sceneIndex = Math.min(3, Math.floor(t / 4));
+      const sceneProgress = (t % 4) / 4;
+
+      // Card container #242424 with 1px border #383838
+      c.fillStyle = '#242424';
+      c.fillRect(100, 80, 1080, 560);
+      c.strokeStyle = '#383838';
+      c.lineWidth = 1;
+      c.strokeRect(100, 80, 1080, 560);
+
+      // Subtle indicator badge
+      c.fillStyle = '#2e2e2e';
+      c.fillRect(140, 120, 110, 32);
+      c.fillStyle = '#cccccc';
+      c.font = '600 13px system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.fillText(`SCENE ${sceneIndex + 1} OF 4`, 195, 141);
+
+      // Scene headers
+      const sceneTitles = [
+        'Scene 1: One Continuous Video as a Slide Deck',
+        'Scene 2: Automatic Stop Points on the Timeline',
+        'Scene 3: Pressing Arrow Key Plays to Next Scene',
+        'Scene 4: The Presentation is Complete'
+      ];
+
+      const sceneDescriptions = [
+        'The video itself contains all the fluid slide animations and transitions.',
+        'At each scene stop, playback pauses automatically until you press Next.',
+        'Pressing [→] or [Space] plays smoothly to the next point and pauses.',
+        'Pressing [←] rewinds back to the previous scene stop point.'
+      ];
+
+      c.fillStyle = '#f0f0f0';
+      c.font = 'bold 32px system-ui, sans-serif';
+      c.textAlign = 'left';
+      c.fillText(sceneTitles[sceneIndex], 140, 210);
+
+      c.fillStyle = '#9e9e9e';
+      c.font = '20px system-ui, sans-serif';
+      c.fillText(sceneDescriptions[sceneIndex], 140, 260);
+
+      // Continuous animated transition element showing video motion between scenes!
+      // This makes it visible that it's a real continuous playing video
+      const circleX = 140 + ((t / 16) * 1000);
+      c.fillStyle = '#333333';
+      c.fillRect(140, 360, 1000, 8);
+
+      // Accent color used minimally only on the moving playhead
+      c.fillStyle = '#007acc';
+      c.fillRect(circleX - 8, 356, 16, 16);
+
+      // Visual timeline stops
+      for (let s = 0; s < 4; s++) {
+        const stopX = 140 + ((s * 4) / 16) * 1000;
+        c.fillStyle = s <= sceneIndex ? '#007acc' : '#555555';
+        c.fillRect(stopX - 3, 352, 6, 24);
+
+        c.fillStyle = '#777777';
+        c.font = '12px monospace';
+        c.textAlign = 'center';
+        c.fillText(`${s * 4}s`, stopX, 395);
+      }
+
+      // Live animated motion box in center to show transition between scene 1 -> 2 -> 3 -> 4
+      const boxOffset = (sceneProgress * 200);
+      c.fillStyle = '#1e1e1e';
+      c.fillRect(140, 440, 1000, 120);
+      c.strokeStyle = '#333333';
+      c.strokeRect(140, 440, 1000, 120);
+
+      c.fillStyle = '#007acc';
+      c.fillRect(160 + boxOffset, 480, 40, 40);
+
+      c.fillStyle = '#aaaaaa';
+      c.font = '14px system-ui, sans-serif';
+      c.textAlign = 'left';
+      c.fillText(`Video Timecode: ${t.toFixed(2)}s — Status: ${sceneProgress > 0.85 ? 'Approaching Next Scene Boundary...' : 'Playing continuous animation'}`, 220 + boxOffset, 505);
+    }
   });
 }

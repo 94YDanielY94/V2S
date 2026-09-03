@@ -1,365 +1,293 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Maximize,
-  Minimize,
-  FileText,
-  Layers,
-  Image as ImageIcon,
-  Video,
-  Play,
-  Pause
-} from 'lucide-react';
-import type { KeyframeSlide, PresentationViewMode } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type { SceneStop } from '../types';
+import { X, ChevronLeft, ChevronRight, Play, Pause, Maximize, Minimize } from 'lucide-react';
 import { formatTime } from '../utils/time';
 
 interface PresentationPreviewProps {
-  slides: KeyframeSlide[];
-  videoUrl: string | null;
-  initialSlideIndex?: number;
+  videoUrl: string;
+  scenes: SceneStop[];
+  initialSceneIndex?: number;
   onClose: () => void;
-  onSeekVideo?: (timestamp: number) => void;
 }
 
 export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
-  slides,
   videoUrl,
-  initialSlideIndex = 0,
+  scenes,
+  initialSceneIndex = 0,
   onClose,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(
-    Math.max(0, Math.min(initialSlideIndex, slides.length - 1))
+    Math.max(0, Math.min(initialSceneIndex, scenes.length - 1))
   );
-  const [viewMode, setViewMode] = useState<PresentationViewMode>('snapshot');
-  const [showNotes, setShowNotes] = useState(false);
-  const [showThumbnails, setShowThumbnails] = useState(true);
+  const [isPlayingBetweenScenes, setIsPlayingBetweenScenes] = useState(false);
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isPlayingVideo, setIsPlayingVideo] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const controlsTimeoutRef = useRef<number | null>(null);
 
-  const currentSlide = slides[currentIndex];
+  const currentScene = scenes[currentIndex];
 
-  // Navigate next / prev
-  const handleNext = () => {
-    if (currentIndex < slides.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    }
-  };
+  // Advance to next scene: plays the continuous video until reaching next scene stop timestamp!
+  const advanceToNextScene = useCallback(() => {
+    if (!videoRef.current || scenes.length === 0) return;
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-    }
-  };
-
-  // Synchronize video element when slide index changes if in video mode
-  useEffect(() => {
-    if (viewMode === 'video' && videoRef.current && currentSlide) {
-      videoRef.current.currentTime = currentSlide.timestamp;
+    if (isPlayingBetweenScenes && targetIndex !== null) {
+      // If already playing, immediately skip to the target stop point
       videoRef.current.pause();
-      setIsPlayingVideo(false);
+      videoRef.current.currentTime = scenes[targetIndex].timestamp;
+      setCurrentIndex(targetIndex);
+      setIsPlayingBetweenScenes(false);
+      setTargetIndex(null);
+      return;
     }
-  }, [currentIndex, viewMode, currentSlide]);
 
-  // Keyboard navigation (PowerPoint style: ArrowLeft, ArrowRight, Space, Escape, etc.)
+    if (currentIndex < scenes.length - 1) {
+      const nextIdx = currentIndex + 1;
+      setTargetIndex(nextIdx);
+      setIsPlayingBetweenScenes(true);
+      videoRef.current.play().catch(() => {});
+    }
+  }, [currentIndex, isPlayingBetweenScenes, targetIndex, scenes]);
+
+  // Return to previous scene: pauses and rewinds to previous stop point
+  const returnToPreviousScene = useCallback(() => {
+    if (!videoRef.current || scenes.length === 0) return;
+
+    if (isPlayingBetweenScenes) {
+      // Stop current transition and return to the starting scene
+      videoRef.current.pause();
+      videoRef.current.currentTime = scenes[currentIndex].timestamp;
+      setIsPlayingBetweenScenes(false);
+      setTargetIndex(null);
+      return;
+    }
+
+    if (currentIndex > 0) {
+      const prevIdx = currentIndex - 1;
+      videoRef.current.pause();
+      videoRef.current.currentTime = scenes[prevIdx].timestamp;
+      setCurrentIndex(prevIdx);
+      setIsPlayingBetweenScenes(false);
+      setTargetIndex(null);
+    }
+  }, [currentIndex, isPlayingBetweenScenes, scenes]);
+
+  // Monitor video playback with requestAnimationFrame for frame-accurate pausing at scene boundary
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
+    const checkBoundary = () => {
       if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        isPlayingBetweenScenes &&
+        targetIndex !== null &&
+        videoRef.current &&
+        scenes[targetIndex]
       ) {
-        return;
+        const targetTime = scenes[targetIndex].timestamp;
+        const currentVideoTime = videoRef.current.currentTime;
+
+        // If we reached or passed the target scene's timestamp, pause automatically!
+        if (currentVideoTime >= targetTime) {
+          videoRef.current.pause();
+          videoRef.current.currentTime = targetTime;
+          setCurrentIndex(targetIndex);
+          setIsPlayingBetweenScenes(false);
+          setTargetIndex(null);
+        }
       }
 
+      animationFrameRef.current = requestAnimationFrame(checkBoundary);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(checkBoundary);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlayingBetweenScenes, targetIndex, scenes]);
+
+  // Initialize presentation at initialScene timestamp paused
+  useEffect(() => {
+    if (videoRef.current && scenes[currentIndex]) {
+      videoRef.current.currentTime = scenes[currentIndex].timestamp;
+      videoRef.current.pause();
+    }
+  }, []);
+
+  // Keyboard navigation: ArrowRight / Space -> next scene; ArrowLeft -> previous scene; Esc -> exit
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
         case 'ArrowRight':
-        case 'PageDown':
+        case ' ':
         case 'Enter':
+        case 'PageDown':
           e.preventDefault();
-          handleNext();
+          advanceToNextScene();
           break;
 
         case 'ArrowLeft':
-        case 'PageUp':
         case 'Backspace':
+        case 'PageUp':
           e.preventDefault();
-          handlePrev();
-          break;
-
-        case ' ': // Space key: toggle video play in video mode or advance slide
-          e.preventDefault();
-          if (viewMode === 'video' && videoRef.current) {
-            if (videoRef.current.paused) {
-              videoRef.current.play();
-              setIsPlayingVideo(true);
-            } else {
-              videoRef.current.pause();
-              setIsPlayingVideo(false);
-            }
-          } else {
-            handleNext();
-          }
+          returnToPreviousScene();
           break;
 
         case 'Escape':
           e.preventDefault();
           if (document.fullscreenElement) {
-            document.exitFullscreen();
+            document.exitFullscreen().catch(() => {});
           } else {
             onClose();
           }
           break;
 
-        case 'n':
-        case 'N':
+        case 'f':
+        case 'F':
           e.preventDefault();
-          setShowNotes((prev) => !prev);
-          break;
-
-        case 't':
-        case 'T':
-          e.preventDefault();
-          setShowThumbnails((prev) => !prev);
-          break;
-
-        case 'v':
-        case 'V':
-          e.preventDefault();
-          setViewMode((prev) => (prev === 'snapshot' ? 'video' : 'snapshot'));
+          toggleFullscreen();
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, slides.length, viewMode, onClose]);
+  }, [advanceToNextScene, returnToPreviousScene, onClose]);
+
+  // Auto-hide controls overlay after inactivity
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = window.setTimeout(() => {
+      setShowControls(false);
+    }, 2400);
+  };
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true));
+      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false));
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
     }
   };
 
-  if (!currentSlide) {
-    return null;
-  }
-
   return (
-    <div className="preview-overlay" ref={containerRef}>
-      {/* Top Floating Control Bar */}
-      <div className="preview-topbar">
-        <div className="preview-topbar-left">
-          <div className="preview-slide-indicator">
-            <span className="current-num">{currentIndex + 1}</span>
-            <span className="sep">/</span>
-            <span className="total-num">{slides.length}</span>
-          </div>
-          <span className="preview-slide-title">{currentSlide.title}</span>
-          <span className="preview-timestamp">
-            ({formatTime(currentSlide.timestamp, true)})
-          </span>
-        </div>
+    <div
+      className="presentation-view"
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+    >
+      {/* Fullscreen continuous video */}
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        className="presentation-video"
+        playsInline
+      />
 
-        <div className="preview-topbar-center">
-          {videoUrl && (
-            <div className="mode-toggle-group">
-              <button
-                className={`btn-mode ${viewMode === 'snapshot' ? 'active' : ''}`}
-                onClick={() => setViewMode('snapshot')}
-                title="Slide Image Mode (instant PowerPoint snapshot)"
-              >
-                <ImageIcon size={13} />
-                <span>Slide Snapshot</span>
-              </button>
-              <button
-                className={`btn-mode ${viewMode === 'video' ? 'active' : ''}`}
-                onClick={() => setViewMode('video')}
-                title="Video Playback Mode (seeks directly to keyframe timestamp)"
-              >
-                <Video size={13} />
-                <span>Video Seek</span>
-              </button>
-            </div>
+      {/* Floating Header Overlay */}
+      <div className={`presentation-header ${showControls ? 'visible' : ''}`}>
+        <div className="header-scene-info">
+          <span className="scene-counter">
+            Scene {currentIndex + 1} / {scenes.length}
+          </span>
+          <span className="scene-name-display">{currentScene?.name}</span>
+          <span className="scene-time-display">
+            ({formatTime(currentScene?.timestamp ?? 0, false)})
+          </span>
+          {isPlayingBetweenScenes && targetIndex !== null && (
+            <span className="transition-badge">
+              Playing to Scene {targetIndex + 1}...
+            </span>
           )}
         </div>
 
-        <div className="preview-topbar-right">
+        <div className="header-actions">
           <button
-            className={`btn-preview-tool ${showNotes ? 'active' : ''}`}
-            onClick={() => setShowNotes((prev) => !prev)}
-            title="Toggle Speaker Notes (N)"
-          >
-            <FileText size={14} />
-            <span>Notes</span>
-          </button>
-
-          <button
-            className={`btn-preview-tool ${showThumbnails ? 'active' : ''}`}
-            onClick={() => setShowThumbnails((prev) => !prev)}
-            title="Toggle Thumbnails Bar (T)"
-          >
-            <Layers size={14} />
-            <span>Thumbnails</span>
-          </button>
-
-          <button
-            className="btn-preview-tool"
+            className="btn-overlay-icon"
             onClick={toggleFullscreen}
-            title="Toggle Fullscreen"
+            title="Toggle Fullscreen (F)"
           >
-            {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            {isFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
           </button>
-
           <button
-            className="btn-preview-close"
+            className="btn-overlay-close"
             onClick={onClose}
-            title="Exit Preview (Esc)"
+            title="Exit Presentation (Esc)"
           >
             <X size={16} />
           </button>
         </div>
       </div>
 
-      {/* Main Slide Presentation Stage */}
-      <div className="preview-stage">
-        {/* Previous Navigation Button */}
-        <button
-          className="nav-arrow nav-arrow-left"
-          onClick={handlePrev}
-          disabled={currentIndex === 0}
-          title="Previous Slide (← Arrow Key)"
-        >
-          <ChevronLeft size={28} />
-        </button>
+      {/* Subtle Navigation Arrows */}
+      <button
+        className={`presentation-nav-btn nav-prev ${showControls ? 'visible' : ''}`}
+        onClick={returnToPreviousScene}
+        disabled={currentIndex === 0 && !isPlayingBetweenScenes}
+        title="Previous Scene (← Left Arrow)"
+      >
+        <ChevronLeft size={32} />
+      </button>
 
-        {/* Slide Display Area */}
-        <div className="slide-display-frame">
-          {viewMode === 'snapshot' || !videoUrl ? (
-            currentSlide.imageUrl ? (
-              <img
-                src={currentSlide.imageUrl}
-                alt={currentSlide.title}
-                className="slide-presentation-img"
-              />
+      <button
+        className={`presentation-nav-btn nav-next ${showControls ? 'visible' : ''}`}
+        onClick={advanceToNextScene}
+        disabled={currentIndex === scenes.length - 1 && !isPlayingBetweenScenes}
+        title="Next Scene (→ Right Arrow or Space)"
+      >
+        <ChevronRight size={32} />
+      </button>
+
+      {/* Bottom Timeline and Progress Bar */}
+      <div className={`presentation-footer ${showControls ? 'visible' : ''}`}>
+        <div className="scene-progress-bar">
+          <div
+            className="scene-progress-fill"
+            style={{
+              width: `${((currentIndex + 1) / scenes.length) * 100}%`,
+            }}
+          />
+        </div>
+
+        <div className="footer-controls">
+          <button
+            className="btn-footer-step"
+            onClick={returnToPreviousScene}
+            disabled={currentIndex === 0 && !isPlayingBetweenScenes}
+          >
+            <ChevronLeft size={14} />
+            <span>Prev Scene</span>
+          </button>
+
+          <div className="footer-status">
+            {isPlayingBetweenScenes ? (
+              <span className="status-playing">
+                <Play size={12} /> Playing animation to next scene
+              </span>
             ) : (
-              <div className="slide-blank-placeholder">
-                <p className="placeholder-title">{currentSlide.title}</p>
-                <p className="placeholder-sub">
-                  Keyframe at {formatTime(currentSlide.timestamp, true)}
-                </p>
-              </div>
-            )
-          ) : (
-            <div className="slide-video-container">
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                className="slide-presentation-video"
-                onPlay={() => setIsPlayingVideo(true)}
-                onPause={() => setIsPlayingVideo(false)}
-                controls
-              />
-              <div className="video-seek-badge">
-                <button
-                  className="btn-play-pause-small"
-                  onClick={() => {
-                    if (videoRef.current) {
-                      if (videoRef.current.paused) {
-                        videoRef.current.play();
-                      } else {
-                        videoRef.current.pause();
-                      }
-                    }
-                  }}
-                >
-                  {isPlayingVideo ? <Pause size={14} /> : <Play size={14} />}
-                  <span>{isPlayingVideo ? 'Pause' : 'Play from this stop point'}</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Speaker Notes Drawer / Overlay */}
-          {showNotes && (
-            <div className="preview-notes-drawer">
-              <div className="notes-drawer-header">
-                <FileText size={14} />
-                <span>Speaker Notes &bull; Slide {currentIndex + 1}</span>
-                <button
-                  className="btn-close-notes"
-                  onClick={() => setShowNotes(false)}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <div className="notes-drawer-body">
-                {currentSlide.notes ? (
-                  <p className="notes-content">{currentSlide.notes}</p>
-                ) : (
-                  <p className="notes-empty">No notes recorded for this slide.</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Next Navigation Button */}
-        <button
-          className="nav-arrow nav-arrow-right"
-          onClick={handleNext}
-          disabled={currentIndex === slides.length - 1}
-          title="Next Slide (→ Arrow Key or Space)"
-        >
-          <ChevronRight size={28} />
-        </button>
-      </div>
-
-      {/* Bottom Thumbnail Strip for fast hopping */}
-      {showThumbnails && (
-        <div className="preview-bottom-bar">
-          <div className="thumbnails-scroll-container">
-            {slides.map((slide, idx) => {
-              const isActive = idx === currentIndex;
-              return (
-                <button
-                  key={slide.id}
-                  className={`preview-thumb-card ${isActive ? 'active' : ''}`}
-                  onClick={() => setCurrentIndex(idx)}
-                  title={`Slide ${idx + 1}: ${slide.title}`}
-                >
-                  <div className="thumb-header">
-                    <span className="thumb-num">#{idx + 1}</span>
-                    <span className="thumb-time">{formatTime(slide.timestamp, false)}</span>
-                  </div>
-                  <div className="thumb-media">
-                    {slide.imageUrl ? (
-                      <img src={slide.imageUrl} alt="" className="thumb-img" />
-                    ) : (
-                      <div className="thumb-empty" />
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+              <span className="status-paused">
+                <Pause size={12} /> Paused at Scene {currentIndex + 1} &bull; Press &rarr; or Space to continue
+              </span>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Clean Bottom Progress Bar */}
-      <div className="preview-progress-track">
-        <div
-          className="preview-progress-fill"
-          style={{
-            width: `${((currentIndex + 1) / slides.length) * 100}%`,
-          }}
-        />
+          <button
+            className="btn-footer-step"
+            onClick={advanceToNextScene}
+            disabled={currentIndex === scenes.length - 1 && !isPlayingBetweenScenes}
+          >
+            <span>Next Scene</span>
+            <ChevronRight size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );

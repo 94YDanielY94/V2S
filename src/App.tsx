@@ -4,23 +4,22 @@ import { Sidebar } from './components/Sidebar';
 import { VideoPlayer } from './components/VideoPlayer';
 import { PresentationPreview } from './components/PresentationPreview';
 import { StatusBar } from './components/StatusBar';
-import type { KeyframeSlide, ProjectData } from './types';
-import { captureVideoFrame, captureFromImageFile } from './utils/capture';
-import { generateDemoVideo } from './utils/demo';
+import type { SceneStop } from './types';
+import { generateContinuousDemoVideo } from './utils/demo';
 
 export function App() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [slides, setSlides] = useState<KeyframeSlide[]>([]);
-  const [selectedSlideId, setSelectedSlideId] = useState<string | null>(null);
+  const [scenes, setScenes] = useState<SceneStop[]>([]);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isPresentationOpen, setIsPresentationOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Play / Pause toggle
+  // Play / Pause toggle in editor
   const handleTogglePlay = useCallback(() => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
@@ -31,7 +30,7 @@ export function App() {
     }
   }, []);
 
-  // Seek video to specific timestamp
+  // Seek video
   const handleSeek = useCallback((time: number) => {
     if (!videoRef.current) {
       setCurrentTime(time);
@@ -42,7 +41,7 @@ export function App() {
     setCurrentTime(clamped);
   }, [duration]);
 
-  // Open local video file
+  // Open video file
   const handleOpenVideoFile = (file: File) => {
     const url = URL.createObjectURL(file);
     setVideoUrl(url);
@@ -50,41 +49,24 @@ export function App() {
     setCurrentTime(0);
     setIsPlaying(false);
 
-    // If no slides exist yet, add the first slide at 00:00 once video is loaded
-    setTimeout(() => {
-      if (videoRef.current) {
-        videoRef.current.currentTime = 0;
+    // Initial Scene 1 at 0s
+    setScenes([
+      {
+        id: `scene-${Date.now()}`,
+        name: 'Scene 1',
+        timestamp: 0,
       }
-    }, 200);
+    ]);
   };
 
-  // Open standalone image file as a slide
-  const handleOpenImageFile = async (file: File) => {
-    try {
-      const dataUrl = await captureFromImageFile(file);
-      const newSlide: KeyframeSlide = {
-        id: `slide-${Date.now()}`,
-        timestamp: currentTime,
-        title: file.name.replace(/\.[^/.]+$/, ''),
-        notes: '',
-        imageUrl: dataUrl,
-        createdAt: Date.now(),
-      };
-      setSlides((prev) => [...prev, newSlide]);
-      setSelectedSlideId(newSlide.id);
-    } catch (err) {
-      console.error('Failed to load image slide:', err);
-    }
-  };
-
-  // Load interactive demo video & keyframe slides
+  // Load continuous demo video
   const handleLoadDemo = async () => {
     try {
-      const { videoUrl: demoUrl, slides: demoSlides } = await generateDemoVideo();
+      const { videoUrl: demoUrl, scenes: demoScenes } = await generateContinuousDemoVideo();
       setVideoUrl(demoUrl);
-      setFileName('demo-presentation.webm');
-      setSlides(demoSlides);
-      setSelectedSlideId(demoSlides[0]?.id || null);
+      setFileName('demo-continuous-presentation.webm');
+      setScenes(demoScenes);
+      setSelectedSceneId(demoScenes[0]?.id || null);
       setCurrentTime(0);
       setDuration(16);
       setIsPlaying(false);
@@ -93,129 +75,41 @@ export function App() {
     }
   };
 
-  // Add keyframe stop point at current position
-  const handleAddKeyframe = useCallback(() => {
-    const timestamp = videoRef.current ? videoRef.current.currentTime : currentTime;
-    const imageUrl = videoRef.current ? captureVideoFrame(videoRef.current) : '';
+  // Add scene stop point at current video time
+  const handleAddStop = useCallback(() => {
+    const time = videoRef.current ? videoRef.current.currentTime : currentTime;
 
-    const newSlide: KeyframeSlide = {
-      id: `slide-${Date.now()}`,
-      timestamp,
-      title: `Slide ${slides.length + 1}`,
-      notes: '',
-      imageUrl,
-      createdAt: Date.now(),
+    const newScene: SceneStop = {
+      id: `scene-${Date.now()}`,
+      name: `Scene ${scenes.length + 1}`,
+      timestamp: parseFloat(time.toFixed(2)),
     };
 
-    // Insert sorted by timestamp
-    setSlides((prev) => {
-      const updated = [...prev, newSlide];
+    setScenes((prev) => {
+      const updated = [...prev, newScene];
       return updated.sort((a, b) => a.timestamp - b.timestamp);
     });
 
-    setSelectedSlideId(newSlide.id);
-  }, [currentTime, slides.length]);
+    setSelectedSceneId(newScene.id);
+  }, [currentTime, scenes.length]);
 
-  // Retake snapshot of a slide using current frame
-  const handleRetakeSnapshot = (id: string) => {
-    if (!videoRef.current) return;
-    const imageUrl = captureVideoFrame(videoRef.current);
-    if (!imageUrl) return;
-
-    setSlides((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, imageUrl } : s))
-    );
-  };
-
-  // Delete slide
-  const handleDeleteSlide = (id: string) => {
-    setSlides((prev) => prev.filter((s) => s.id !== id));
-    if (selectedSlideId === id) {
-      setSelectedSlideId(null);
+  // Delete scene stop
+  const handleDeleteScene = (id: string) => {
+    setScenes((prev) => prev.filter((s) => s.id !== id));
+    if (selectedSceneId === id) {
+      setSelectedSceneId(null);
     }
   };
 
-  // Move slide up or down
-  const handleMoveSlide = (index: number, direction: 'up' | 'down') => {
-    setSlides((prev) => {
-      const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const temp = copy[index];
-      copy[index] = copy[targetIndex];
-      copy[targetIndex] = temp;
-      return copy;
+  // Update scene name or timestamp
+  const handleUpdateScene = (id: string, updates: Partial<SceneStop>) => {
+    setScenes((prev) => {
+      const updated = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+      return updated.sort((a, b) => a.timestamp - b.timestamp);
     });
   };
 
-  // Update slide property
-  const handleUpdateSlide = (id: string, updates: Partial<KeyframeSlide>) => {
-    setSlides((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
-    );
-  };
-
-  // Clear all slides
-  const handleClearAllSlides = () => {
-    if (window.confirm('Are you sure you want to clear all keyframe slides?')) {
-      setSlides([]);
-      setSelectedSlideId(null);
-    }
-  };
-
-  // Export project to JSON
-  const handleExportProject = () => {
-    const project: ProjectData = {
-      title: fileName || 'Untitled Presentation',
-      videoName: fileName || undefined,
-      videoDuration: duration,
-      slides,
-      version: '1.0.0',
-    };
-
-    const blob = new Blob([JSON.stringify(project, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(fileName || 'presentation').replace(/\.[^/.]+$/, '')}-slides.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Import project from JSON
-  const handleImportProject = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string) as ProjectData;
-        if (data.slides && Array.isArray(data.slides)) {
-          setSlides(data.slides);
-          if (data.slides.length > 0) {
-            setSelectedSlideId(data.slides[0].id);
-          }
-        }
-      } catch (err) {
-        alert('Invalid project file format: ' + err);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  // Export slides as individual images
-  const handleExportSlidesImages = () => {
-    slides.forEach((slide, idx) => {
-      if (slide.imageUrl) {
-        const a = document.createElement('a');
-        a.href = slide.imageUrl;
-        a.download = `slide_${String(idx + 1).padStart(2, '0')}_${slide.title.replace(/[^a-z0-9_-]/gi, '_')}.jpg`;
-        a.click();
-      }
-    });
-  };
-
-  // Global keyboard shortcuts
+  // Global shortcuts in editor
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -225,81 +119,65 @@ export function App() {
         return;
       }
 
-      // F5 -> Open / Close PowerPoint preview
       if (e.key === 'F5') {
         e.preventDefault();
-        if (slides.length > 0) {
-          setIsPreviewOpen((prev) => !prev);
+        if (scenes.length > 0 && videoUrl) {
+          setIsPresentationOpen((prev) => !prev);
         }
         return;
       }
 
-      // When preview is open, preview handles navigation
-      if (isPreviewOpen) return;
+      if (isPresentationOpen) return;
 
-      // Space -> Toggle Play / Pause
       if (e.key === ' ') {
         e.preventDefault();
         handleTogglePlay();
         return;
       }
 
-      // K -> Add Keyframe Stop Point
-      if (e.key === 'k' || e.key === 'K') {
+      if (e.key === 'k' || e.key === 'K' || e.key === 's' || e.key === 'S') {
         e.preventDefault();
-        handleAddKeyframe();
+        handleAddStop();
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPreviewOpen, slides.length, handleTogglePlay, handleAddKeyframe]);
+  }, [isPresentationOpen, scenes.length, videoUrl, handleTogglePlay, handleAddStop]);
 
   return (
     <div className="app-container">
-      {/* Top VS Code style TitleBar */}
+      {/* Simplified TitleBar */}
       <TitleBar
         fileName={fileName}
-        slidesCount={slides.length}
+        scenesCount={scenes.length}
         onOpenVideoFile={handleOpenVideoFile}
-        onOpenImageFile={handleOpenImageFile}
         onLoadDemo={handleLoadDemo}
-        onAddKeyframe={handleAddKeyframe}
-        onOpenPreview={() => setIsPreviewOpen(true)}
-        onExportProject={handleExportProject}
-        onImportProject={handleImportProject}
-        onExportSlidesImages={handleExportSlidesImages}
+        onAddStop={handleAddStop}
+        onStartPresentation={() => setIsPresentationOpen(true)}
         hasVideo={Boolean(videoUrl)}
       />
 
-      {/* Main Workspace Body */}
+      {/* Main Workspace */}
       <div className="app-workspace">
-        {/* Left Explorer Sidebar */}
         <Sidebar
-          slides={slides}
-          selectedSlideId={selectedSlideId}
+          scenes={scenes}
+          selectedSceneId={selectedSceneId}
           currentTime={currentTime}
-          onSelectSlide={(slide) => {
-            setSelectedSlideId(slide.id);
-            handleSeek(slide.timestamp);
-          }}
-          onAddKeyframe={handleAddKeyframe}
-          onDeleteSlide={handleDeleteSlide}
-          onMoveSlide={handleMoveSlide}
-          onUpdateSlide={handleUpdateSlide}
-          onRetakeSnapshot={handleRetakeSnapshot}
-          onSeekToTimestamp={handleSeek}
-          onClearAllSlides={handleClearAllSlides}
+          onSelectScene={(scene) => setSelectedSceneId(scene.id)}
+          onAddStop={handleAddStop}
+          onDeleteScene={handleDeleteScene}
+          onUpdateScene={handleUpdateScene}
+          onSeek={handleSeek}
           hasVideo={Boolean(videoUrl)}
         />
 
-        {/* Central Video Editor Area */}
         <main className="app-editor-main">
           <VideoPlayer
             videoUrl={videoUrl}
             videoRef={videoRef}
-            slides={slides}
+            scenes={scenes}
             currentTime={currentTime}
             duration={duration}
             isPlaying={isPlaying}
@@ -307,43 +185,35 @@ export function App() {
             onDurationChange={(dur) => setDuration(dur)}
             onTogglePlay={handleTogglePlay}
             onSeek={handleSeek}
-            onAddKeyframe={handleAddKeyframe}
+            onAddStop={handleAddStop}
             onOpenVideoFile={handleOpenVideoFile}
             onLoadDemo={handleLoadDemo}
-            onSelectSlide={(slide) => {
-              setSelectedSlideId(slide.id);
-              handleSeek(slide.timestamp);
-            }}
           />
         </main>
       </div>
 
-      {/* PowerPoint Fullscreen / Presentation Preview */}
-      {isPreviewOpen && slides.length > 0 && (
+      {/* Fullscreen Video Presentation Mode */}
+      {isPresentationOpen && videoUrl && scenes.length > 0 && (
         <PresentationPreview
-          slides={slides}
           videoUrl={videoUrl}
-          initialSlideIndex={
-            selectedSlideId
-              ? Math.max(
-                  0,
-                  slides.findIndex((s) => s.id === selectedSlideId)
-                )
+          scenes={scenes}
+          initialSceneIndex={
+            selectedSceneId
+              ? Math.max(0, scenes.findIndex((s) => s.id === selectedSceneId))
               : 0
           }
-          onClose={() => setIsPreviewOpen(false)}
-          onSeekVideo={handleSeek}
+          onClose={() => setIsPresentationOpen(false)}
         />
       )}
 
-      {/* VS Code Bottom Status Bar */}
+      {/* Minimal Status Bar */}
       <StatusBar
-        slidesCount={slides.length}
+        scenesCount={scenes.length}
         currentTime={currentTime}
         duration={duration}
         fileName={fileName}
-        onOpenPreview={() => {
-          if (slides.length > 0) setIsPreviewOpen(true);
+        onStartPresentation={() => {
+          if (scenes.length > 0 && videoUrl) setIsPresentationOpen(true);
         }}
       />
     </div>

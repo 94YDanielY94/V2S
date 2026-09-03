@@ -1,18 +1,11 @@
-export interface KeyframeSlide {
+export interface SceneStop {
   id: string;
-  timestamp: number; // in seconds
-  title: string;
-  notes?: string;
-  imageUrl?: string; // high-resolution captured snapshot
-  createdAt: number;
+  name: string;
+  timestamp: number; // seconds in video
 }
 
-export type PresentationViewMode = 'snapshot' | 'video';
-
-export interface ProjectData {
-  title: string;
+export interface ProjectSettings {
   videoName?: string;
-  videoDuration: number;
-  slides: KeyframeSlide[];
-  version: string;
+  videoUrl?: string;
+  scenes: SceneStop[];
 }

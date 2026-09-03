@@ -1,42 +1,38 @@
-import { Layers, Clock, Tv } from 'lucide-react';
+import React from 'react';
+import { Clock } from 'lucide-react';
 import { formatTime } from '../utils/time';
 
 interface StatusBarProps {
-  slidesCount: number;
+  scenesCount: number;
   currentTime: number;
   duration: number;
   fileName: string | null;
-  onOpenPreview: () => void;
+  onStartPresentation: () => void;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
-  slidesCount,
+  scenesCount,
   currentTime,
   duration,
   fileName,
-  onOpenPreview,
+  onStartPresentation,
 }) => {
   return (
     <footer className="app-statusbar">
       <div className="statusbar-left">
-        <button
-          className="statusbar-item statusbar-btn"
-          onClick={onOpenPreview}
-          disabled={slidesCount === 0}
-          title="Open PowerPoint Preview (F5)"
-        >
-          <Tv size={12} />
-          <span>Present</span>
-        </button>
-
-        <div className="statusbar-item">
-          <Layers size={12} />
-          <span>{slidesCount} {slidesCount === 1 ? 'Slide' : 'Slides'}</span>
-        </div>
+        {scenesCount > 0 && (
+          <button
+            className="statusbar-link"
+            onClick={onStartPresentation}
+            title="Start presentation (F5)"
+          >
+            <span>Present ({scenesCount} {scenesCount === 1 ? 'scene' : 'scenes'})</span>
+          </button>
+        )}
 
         {duration > 0 && (
-          <div className="statusbar-item">
-            <Clock size={12} />
+          <div className="statusbar-text">
+            <Clock size={11} />
             <span>
               {formatTime(currentTime, false)} / {formatTime(duration, false)}
             </span>
@@ -44,26 +40,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         )}
 
         {fileName && (
-          <div className="statusbar-item">
-            <span>{fileName}</span>
-          </div>
+          <span className="statusbar-text">{fileName}</span>
         )}
       </div>
 
       <div className="statusbar-right">
-        <div className="statusbar-item shortcuts-hint">
-          <span>&larr; / &rarr; Navigate Slides</span>
-          <span className="dot">&bull;</span>
-          <span>Space: Play / Pause</span>
-          <span className="dot">&bull;</span>
-          <span>K: Add Stop Point</span>
-          <span className="dot">&bull;</span>
-          <span>F5: Preview</span>
-        </div>
-
-        <div className="statusbar-item">
-          <span>Desktop v1.0.0</span>
-        </div>
+        <span className="statusbar-muted">
+          &rarr; or Space: Play to Next Scene &bull; &larr;: Prev Scene &bull; K: Add Stop &bull; F5: Present
+        </span>
       </div>
     </footer>
   );
