@@ -17,6 +17,17 @@ export function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPresentationOpen, setIsPresentationOpen] = useState(false);
   const [activeView, setActiveView] = useState<'editor' | 'scenes'>('editor');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('vts-theme') as 'dark' | 'light') || 'dark';
+  });
+
+  const toggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('vts-theme', next);
+      return next;
+    });
+  };
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -148,7 +159,7 @@ export function App() {
   }, [isPresentationOpen, scenes.length, videoUrl, handleTogglePlay, handleAddStop]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${theme}`} data-theme={theme}>
       {/* Left Slim Vertical Dock (inspired by Image 1 & 2) */}
       <DockBar
         activeView={activeView}
@@ -159,6 +170,8 @@ export function App() {
         }}
         hasVideo={Boolean(videoUrl)}
         scenesCount={scenes.length}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Main App Content Viewport */}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Video, Layers, Sparkles, Play, HelpCircle } from 'lucide-react';
+import { Video, Layers, Sparkles, Play, Sun, Moon } from 'lucide-react';
 
 interface DockBarProps {
   activeView: 'editor' | 'scenes';
@@ -8,6 +8,8 @@ interface DockBarProps {
   onStartPresentation: () => void;
   hasVideo: boolean;
   scenesCount: number;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
 }
 
 export const DockBar: React.FC<DockBarProps> = ({
@@ -17,6 +19,8 @@ export const DockBar: React.FC<DockBarProps> = ({
   onStartPresentation,
   hasVideo,
   scenesCount,
+  theme,
+  onToggleTheme,
 }) => {
   return (
     <aside className="app-dockbar">
@@ -55,8 +59,16 @@ export const DockBar: React.FC<DockBarProps> = ({
         </button>
       </div>
 
-      {/* Bottom Present Button */}
+      {/* Bottom Controls: Theme Toggle & Present */}
       <div className="dock-bottom">
+        <button
+          className="dock-btn theme-toggle-btn"
+          onClick={onToggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+        >
+          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+        </button>
+
         <button
           className="dock-btn btn-dock-present"
           onClick={onStartPresentation}
@@ -65,10 +77,6 @@ export const DockBar: React.FC<DockBarProps> = ({
         >
           <Play size={16} />
         </button>
-
-        <div className="dock-info" title="Video to Slide Presentation">
-          <HelpCircle size={16} />
-        </div>
       </div>
     </aside>
   );

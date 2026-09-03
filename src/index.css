@@ -1,28 +1,74 @@
 /* ==========================================================================
    Video to Slide - Design System (Referencing Image 1, 2, and 3)
-   Aesthetic:
-   - Clean, light dashboard canvas (#f4f5f7)
-   - Deep charcoal vertical dock (#111215)
-   - Crisp white floating cards (#ffffff) with subtle borders (#e5e7eb)
-   - Black pill segmented tabs and primary buttons
-   - Maximum 8px border radius throughout
-   - NO gradients, single accent / high-contrast monochrome
+   Dark Mode & Light Mode
+   - Maximum 8px border radius
+   - Strictly NO gradients (clean solid colors)
+   - High-contrast segmented pills and floating modular cards
    ========================================================================== */
 
-:root {
+/* Default: Dark Mode (requested by user) */
+:root, [data-theme="dark"], .app-shell.dark {
+  --bg-canvas: #0e0f12;
+  --bg-card: #17181d;
+  --bg-card-subtle: #1f2128;
+  --bg-card-hover: #262832;
+  
+  /* Left Dock */
+  --bg-dock: #0a0b0d;
+  --dock-hover: #1b1d23;
+  --dock-active: #252830;
+  --dock-icon: #7d8290;
+  --dock-icon-active: #ffffff;
+
+  /* Primary High-Contrast Buttons */
+  --btn-primary-bg: #ffffff;
+  --btn-primary-hover: #e5e7eb;
+  --btn-primary-text: #0e0f12;
+
+  /* Secondary Buttons */
+  --btn-secondary-bg: #1f2128;
+  --btn-secondary-border: #2c2f38;
+  --btn-secondary-text: #f3f4f6;
+  --btn-secondary-hover: #282a33;
+
+  /* Accent */
+  --accent: #ffffff;
+  --accent-blue: #388bfd;
+
+  /* Borders */
+  --border-light: #262830;
+  --border-medium: #363945;
+  --border-dark: #ffffff;
+
+  /* Text Colors */
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-dim: #4b5563;
+
+  /* Timeline rail */
+  --timeline-rail-bg: #282b34;
+  --timeline-rail-fill: #ffffff;
+
+  /* Strict radius: 8px max */
+  --radius-card: 8px;
+  --radius-pill: 8px;
+  --radius-btn: 6px;
+}
+
+/* Light Mode (Accessible via toggle) */
+[data-theme="light"], .app-shell.light {
   --bg-canvas: #f4f5f7;
   --bg-card: #ffffff;
   --bg-card-subtle: #f9fafb;
   --bg-card-hover: #f3f4f6;
   
-  /* Left Dock Bar */
   --bg-dock: #111215;
   --dock-hover: #1e2025;
   --dock-active: #282a31;
   --dock-icon: #8b8f9a;
   --dock-icon-active: #ffffff;
 
-  /* Primary High-Contrast Buttons & Pills */
   --btn-primary-bg: #111215;
   --btn-primary-hover: #26282e;
   --btn-primary-text: #ffffff;
@@ -32,22 +78,21 @@
   --btn-secondary-text: #1f2937;
   --btn-secondary-hover: #f9fafb;
 
-  /* Accent marker */
   --accent: #111215;
   --accent-blue: #007acc;
 
-  /* Borders */
   --border-light: #e5e7eb;
   --border-medium: #d1d5db;
   --border-dark: #111215;
 
-  /* Text Colors */
   --text-primary: #111827;
   --text-secondary: #4b5563;
   --text-muted: #6b7280;
   --text-dim: #9ca3af;
 
-  /* Border radius: strictly 8px max */
+  --timeline-rail-bg: #e5e7eb;
+  --timeline-rail-fill: #111215;
+
   --radius-card: 8px;
   --radius-pill: 8px;
   --radius-btn: 6px;
@@ -69,6 +114,7 @@ html, body, #root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
   font-size: 13px;
   user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* ==========================================================================
@@ -88,6 +134,7 @@ html, body, #root {
 .app-dockbar {
   width: 56px;
   background-color: var(--bg-dock);
+  border-right: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -161,26 +208,29 @@ html, body, #root {
 .dock-bottom {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+}
+
+.theme-toggle-btn {
+  background-color: var(--dock-hover);
+  color: var(--dock-icon);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.theme-toggle-btn:hover {
+  color: #ffffff;
+  background-color: var(--dock-active);
 }
 
 .btn-dock-present {
-  background-color: #22242a;
-  color: #ffffff;
-  border: 1px solid #32353e;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--border-medium);
 }
 
 .btn-dock-present:hover:not(:disabled) {
-  background-color: #2f323a;
-}
-
-.dock-info {
-  color: #555963;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  opacity: 0.9;
 }
 
 /* ==========================================================================
@@ -220,7 +270,7 @@ html, body, #root {
 }
 
 .topbar-tag {
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   font-size: 11px;
@@ -241,7 +291,7 @@ html, body, #root {
 
 .segmented-pill-group {
   display: flex;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-pill);
   padding: 3px;
@@ -264,7 +314,7 @@ html, body, #root {
 
 .pill-tab.active {
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
 }
 
 /* TopBar Actions */
@@ -280,7 +330,7 @@ button {
   border: none;
   outline: none;
   border-radius: var(--radius-btn);
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 button:disabled {
@@ -293,11 +343,12 @@ button:disabled {
   align-items: center;
   gap: 6px;
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
   padding: 7px 14px;
   font-weight: 600;
   font-size: 12px;
   border-radius: var(--radius-btn);
+  border: 1px solid transparent;
 }
 
 .btn-pill-primary:hover:not(:disabled) {
@@ -357,7 +408,7 @@ button:disabled {
   border-radius: var(--radius-card);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   height: 100%;
   overflow: hidden;
 }
@@ -430,7 +481,7 @@ button:disabled {
 /* Screen Viewport */
 .player-screen-wrapper {
   flex: 1;
-  background-color: #0f1013;
+  background-color: #08090a;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -451,13 +502,13 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.25);
+  background-color: rgba(0, 0, 0, 0.35);
 }
 
 .pause-icon-pill {
   width: 52px;
   height: 52px;
-  background-color: rgba(17, 18, 21, 0.85);
+  background-color: rgba(20, 22, 28, 0.85);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--radius-card);
@@ -466,7 +517,7 @@ button:disabled {
   justify-content: center;
 }
 
-/* Modern Timeline Module (Image 1 & 2 inspired) */
+/* Modern Timeline Module */
 .timeline-card-module {
   padding: 10px 18px;
   background-color: var(--bg-card);
@@ -486,7 +537,7 @@ button:disabled {
   left: 0;
   right: 0;
   height: 6px;
-  background-color: #e5e7eb;
+  background-color: var(--timeline-rail-bg);
   border-radius: 3px;
 }
 
@@ -494,7 +545,7 @@ button:disabled {
   position: absolute;
   left: 0;
   height: 6px;
-  background-color: var(--btn-primary-bg);
+  background-color: var(--timeline-rail-fill);
   border-radius: 3px 0 0 3px;
   pointer-events: none;
 }
@@ -503,8 +554,8 @@ button:disabled {
   position: absolute;
   width: 12px;
   height: 16px;
-  background-color: #ffffff;
-  border: 2px solid var(--btn-primary-bg);
+  background-color: var(--bg-card);
+  border: 2px solid var(--timeline-rail-fill);
   border-radius: 3px;
   transform: translateX(-50%);
   pointer-events: none;
@@ -524,7 +575,7 @@ button:disabled {
 .pin-shape {
   width: 6px;
   height: 12px;
-  background-color: var(--btn-primary-bg);
+  background-color: var(--timeline-rail-fill);
   border-radius: 2px;
 }
 
@@ -545,7 +596,7 @@ button:disabled {
   top: -24px;
   transform: translateX(-50%);
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 10px;
@@ -574,7 +625,7 @@ button:disabled {
   align-items: center;
   gap: 6px;
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
   padding: 6px 14px;
   border-radius: var(--radius-btn);
   font-weight: 600;
@@ -617,7 +668,7 @@ kbd {
 }
 
 .empty-badge {
-  background-color: #f3f4f6;
+  background-color: var(--bg-card-subtle);
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   padding: 3px 10px;
@@ -670,7 +721,7 @@ kbd {
   width: 18px;
   height: 18px;
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -684,7 +735,7 @@ kbd {
 }
 
 /* ==========================================================================
-   Scenes Panel (Right Card, Inspired by Image 1 & 2)
+   Scenes Panel (Right Card)
    ========================================================================== */
 .panel-header {
   display: flex;
@@ -754,7 +805,7 @@ kbd {
 }
 
 .scene-card {
-  background-color: #ffffff;
+  background-color: var(--bg-card-subtle);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-card);
   padding: 10px 12px;
@@ -764,7 +815,7 @@ kbd {
 
 .scene-card:hover {
   border-color: var(--border-medium);
-  background-color: var(--bg-card-subtle);
+  background-color: var(--bg-card-hover);
 }
 
 .scene-card.selected {
@@ -772,7 +823,7 @@ kbd {
 }
 
 .scene-card.active-playback {
-  border-left: 3px solid var(--btn-primary-bg);
+  border-left: 3px solid var(--timeline-rail-fill);
 }
 
 .scene-card-header {
@@ -798,7 +849,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 4px;
-  background-color: var(--bg-card-subtle);
+  background-color: var(--bg-card);
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   padding: 2px 6px;
@@ -822,7 +873,7 @@ kbd {
 }
 
 .btn-card-del:hover {
-  color: #cc2222;
+  color: #ef4444;
 }
 
 .scene-card-body {
@@ -867,8 +918,8 @@ kbd {
 }
 
 .input-title-edit {
-  background-color: #ffffff;
-  border: 1px solid var(--border-dark);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-medium);
   color: var(--text-primary);
   padding: 3px 6px;
   font-size: 12px;
@@ -878,8 +929,8 @@ kbd {
 }
 
 .input-time-edit {
-  background-color: #ffffff;
-  border: 1px solid var(--border-dark);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-medium);
   color: var(--text-primary);
   padding: 2px 4px;
   font-size: 11px;
@@ -891,7 +942,7 @@ kbd {
 
 .btn-save-mini {
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
   padding: 3px 5px;
   border-radius: 3px;
   display: flex;
@@ -908,7 +959,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 4px;
-  background-color: var(--bg-card-subtle);
+  background-color: var(--bg-card);
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   padding: 3px 8px;
@@ -919,11 +970,11 @@ kbd {
 
 .btn-jump-scene:hover {
   background-color: var(--btn-primary-bg);
-  color: #ffffff;
+  color: var(--btn-primary-text);
   border-color: var(--btn-primary-bg);
 }
 
-/* Panel Stats Footer (inspired by Image 2 & 3) */
+/* Panel Stats Footer */
 .panel-stats-footer {
   display: flex;
   align-items: center;
@@ -975,8 +1026,8 @@ kbd {
   left: 0;
   right: 0;
   height: 52px;
-  background-color: rgba(17, 18, 21, 0.85);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(10, 11, 14, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -998,7 +1049,7 @@ kbd {
 }
 
 .scene-counter {
-  background-color: #24262c;
+  background-color: #1f2128;
   color: #ffffff;
   padding: 3px 8px;
   border-radius: 4px;
@@ -1034,9 +1085,9 @@ kbd {
 }
 
 .btn-overlay-icon, .btn-overlay-close {
-  background-color: #24262c;
+  background-color: #1f2128;
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 6px 9px;
   border-radius: var(--radius-btn);
   display: flex;
@@ -1044,12 +1095,12 @@ kbd {
 }
 
 .btn-overlay-icon:hover {
-  background-color: #31343c;
+  background-color: #2b2e38;
 }
 
 .btn-overlay-close:hover {
-  background-color: #cc2222;
-  border-color: #cc2222;
+  background-color: #ef4444;
+  border-color: #ef4444;
 }
 
 .presentation-nav-btn {
@@ -1058,9 +1109,9 @@ kbd {
   transform: translateY(-50%);
   width: 44px;
   height: 72px;
-  background-color: rgba(20, 21, 25, 0.7);
+  background-color: rgba(17, 18, 22, 0.7);
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-card);
   display: flex;
   align-items: center;
@@ -1075,7 +1126,7 @@ kbd {
 }
 
 .presentation-nav-btn:hover:not(:disabled) {
-  background-color: rgba(30, 32, 38, 0.95);
+  background-color: rgba(28, 30, 38, 0.95);
 }
 
 .nav-prev {
@@ -1091,8 +1142,8 @@ kbd {
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: rgba(17, 18, 21, 0.85);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(10, 11, 14, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   opacity: 0;
@@ -1107,7 +1158,7 @@ kbd {
 
 .scene-progress-bar {
   height: 4px;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.12);
   width: 100%;
 }
 
@@ -1129,9 +1180,9 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
-  background-color: #24262c;
+  background-color: #1f2128;
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 5px 12px;
   border-radius: var(--radius-btn);
   font-size: 11px;
@@ -1139,7 +1190,7 @@ kbd {
 }
 
 .btn-footer-step:hover:not(:disabled) {
-  background-color: #31343c;
+  background-color: #2b2e38;
 }
 
 .footer-status {
