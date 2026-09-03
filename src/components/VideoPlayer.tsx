@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Plus, Upload, Sparkles, Clock } from 'lucide-react';
+import { Play, Pause, Plus, Upload, Sparkles, Clock, Maximize2 } from 'lucide-react';
 import type { SceneStop } from '../types';
 import { formatTime } from '../utils/time';
 
@@ -73,13 +73,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   if (!videoUrl) {
     return (
-      <div className="empty-player-view">
-        <div className="empty-card">
-          <h2 className="empty-heading">Video to Slide Presentation</h2>
-          <p className="empty-subheading">
-            Load your continuous presentation video, add scene stop points, and present.
-            In presentation mode, the video plays continuously between scenes and automatically
-            pauses at each stop point.
+      <div className="player-card empty-state-card">
+        <div className="empty-content-box">
+          <div className="empty-badge">Interactive Video Presentation</div>
+          <h2 className="empty-title">Turn Continuous Videos into Interactive Slides</h2>
+          <p className="empty-description">
+            Import your video, mark keyframe scene stops along the timeline, and present.
+            Your continuous video automatically pauses at every stop point, waiting for your arrow key to advance.
           </p>
 
           <input
@@ -93,19 +93,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             style={{ display: 'none' }}
           />
 
-          <div className="empty-actions">
+          <div className="empty-button-row">
             <button
-              className="btn-main"
+              className="btn-pill-primary"
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={15} />
-              <span>Open Video File</span>
+              <span>Import Video</span>
             </button>
 
-            <button className="btn-secondary" onClick={onLoadDemo}>
+            <button className="btn-pill-secondary" onClick={onLoadDemo}>
               <Sparkles size={15} />
               <span>Load Interactive Demo</span>
             </button>
+          </div>
+
+          <div className="quick-guide-card">
+            <div className="guide-item">
+              <span className="guide-num">1</span>
+              <span>Scrub video to slide transition</span>
+            </div>
+            <div className="guide-sep">&rarr;</div>
+            <div className="guide-item">
+              <span className="guide-num">2</span>
+              <span>Click Add Stop (Hotkey: K)</span>
+            </div>
+            <div className="guide-sep">&rarr;</div>
+            <div className="guide-item">
+              <span className="guide-num">3</span>
+              <span>Present with Arrow Keys (F5)</span>
+            </div>
           </div>
         </div>
       </div>
@@ -113,13 +130,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }
 
   return (
-    <div className="player-container">
-      {/* Video Viewport */}
-      <div className="video-viewport" onClick={onTogglePlay}>
+    <div className="player-card">
+      {/* Player Header */}
+      <div className="player-card-header">
+        <div className="player-header-title">
+          <h3 className="section-title">Video Timeline &amp; Preview</h3>
+          <span className="section-sub">
+            {scenes.length} {scenes.length === 1 ? 'scene stop' : 'scene stops'} configured
+          </span>
+        </div>
+
+        <div className="player-header-actions">
+          <div className="timecode-pill">
+            <Clock size={12} />
+            <span className="time-val-curr">{formatTime(currentTime, false)}</span>
+            <span className="time-val-sep">/</span>
+            <span className="time-val-total">{formatTime(duration, false)}</span>
+          </div>
+
+          <button
+            className="btn-icon-pill"
+            onClick={() => {
+              if (videoRef.current) {
+                if (document.fullscreenElement) {
+                  document.exitFullscreen();
+                } else {
+                  videoRef.current.requestFullscreen();
+                }
+              }
+            }}
+            title="Toggle fullscreen player"
+          >
+            <Maximize2 size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Video Screen Container */}
+      <div className="player-screen-wrapper" onClick={onTogglePlay}>
         <video
           ref={videoRef}
           src={videoUrl}
-          className="video-element"
+          className="video-render-element"
           onTimeUpdate={() => {
             if (videoRef.current) {
               onTimeUpdate(videoRef.current.currentTime);
@@ -134,30 +186,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         />
 
         {!isPlaying && (
-          <div className="video-center-indicator">
-            <div className="play-icon-box">
-              <Play size={28} />
+          <div className="video-pause-badge">
+            <div className="pause-icon-pill">
+              <Play size={20} />
             </div>
           </div>
         )}
       </div>
 
-      {/* Timeline Section */}
-      <div className="player-timeline-wrapper">
+      {/* Modern Scrubber Timeline (inspired by Image 1 & 2) */}
+      <div className="timeline-card-module">
         <div
           ref={trackRef}
-          className="timeline-track"
+          className="timeline-scrub-track"
           onMouseMove={handleTrackMove}
           onMouseLeave={() => setHoverTime(null)}
           onMouseDown={handleTrackDown}
         >
-          {/* Base Track */}
-          <div className="track-bg" />
+          {/* Base rail */}
+          <div className="timeline-rail" />
 
-          {/* Progress fill */}
-          <div className="track-fill" style={{ width: `${progressPercent}%` }} />
+          {/* Played progress fill */}
+          <div className="timeline-rail-fill" style={{ width: `${progressPercent}%` }} />
 
-          {/* Scene Stop Markers */}
+          {/* Scene Stop Pins */}
           {duration > 0 &&
             scenes.map((scene, idx) => {
               const markerPercent = (scene.timestamp / duration) * 100;
@@ -166,7 +218,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               return (
                 <div
                   key={scene.id}
-                  className={`scene-stop-marker ${isAtCurrent ? 'active' : ''}`}
+                  className={`scene-timeline-marker ${isAtCurrent ? 'active' : ''}`}
                   style={{ left: `${markerPercent}%` }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -174,59 +226,51 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   }}
                   title={`${scene.name} (${formatTime(scene.timestamp, false)})`}
                 >
-                  <div className="marker-pin" />
-                  <span className="marker-label">{idx + 1}</span>
+                  <div className="pin-shape" />
+                  <span className="pin-badge">{idx + 1}</span>
                 </div>
               );
             })}
 
-          {/* Playhead */}
+          {/* Handle */}
           <div
-            className="timeline-playhead"
+            className="timeline-scrub-handle"
             style={{ left: `${progressPercent}%` }}
           />
 
-          {/* Hover Tooltip */}
+          {/* Tooltip */}
           {hoverTime !== null && (
-            <div className="timeline-tooltip" style={{ left: `${hoverX}px` }}>
+            <div className="timeline-hover-bubble" style={{ left: `${hoverX}px` }}>
               {formatTime(hoverTime, false)}
             </div>
           )}
         </div>
       </div>
 
-      {/* Clean Bottom Controls */}
-      <div className="controls-bar">
-        <div className="controls-left">
+      {/* Controls Bar */}
+      <div className="player-toolbar-bottom">
+        <div className="toolbar-left-group">
           <button
-            className="btn-play-pause"
+            className="btn-pill-play"
             onClick={onTogglePlay}
             title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
           >
             {isPlaying ? <Pause size={15} /> : <Play size={15} />}
+            <span>{isPlaying ? 'Pause' : 'Play'}</span>
           </button>
 
-          <div className="time-display">
-            <Clock size={12} className="time-icon" />
-            <span className="time-curr">{formatTime(currentTime, false)}</span>
-            <span className="time-sep">/</span>
-            <span className="time-dur">{formatTime(duration, false)}</span>
-          </div>
-        </div>
-
-        <div className="controls-center">
           <button
-            className="btn-add-stop-center"
+            className="btn-pill-secondary"
             onClick={onAddStop}
-            title="Mark current frame as a scene stop (Hotkey: K or S)"
+            title="Add scene stop at current frame (Hotkey: K or S)"
           >
             <Plus size={14} />
-            <span>Add Stop Point at Current Frame</span>
+            <span>Add Stop at Frame</span>
           </button>
         </div>
 
-        <div className="controls-right">
-          <span className="keyboard-hint">
+        <div className="toolbar-right-group">
+          <span className="shortcuts-legend">
             <kbd>Space</kbd> Play/Pause &bull; <kbd>K</kbd> Add Stop &bull; <kbd>F5</kbd> Present
           </span>
         </div>

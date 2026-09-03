@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { DockBar } from './components/DockBar';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { VideoPlayer } from './components/VideoPlayer';
 import { PresentationPreview } from './components/PresentationPreview';
-import { StatusBar } from './components/StatusBar';
 import type { SceneStop } from './types';
 import { generateContinuousDemoVideo } from './utils/demo';
 
@@ -16,6 +16,7 @@ export function App() {
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPresentationOpen, setIsPresentationOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'editor' | 'scenes'>('editor');
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -49,14 +50,14 @@ export function App() {
     setCurrentTime(0);
     setIsPlaying(false);
 
-    // Initial Scene 1 at 0s
-    setScenes([
-      {
-        id: `scene-${Date.now()}`,
-        name: 'Scene 1',
-        timestamp: 0,
-      }
-    ]);
+    // Default Scene 1 at 0s
+    const firstScene: SceneStop = {
+      id: `scene-${Date.now()}`,
+      name: 'Scene 1: Opening',
+      timestamp: 0,
+    };
+    setScenes([firstScene]);
+    setSelectedSceneId(firstScene.id);
   };
 
   // Load continuous demo video
@@ -147,52 +148,74 @@ export function App() {
   }, [isPresentationOpen, scenes.length, videoUrl, handleTogglePlay, handleAddStop]);
 
   return (
-    <div className="app-container">
-      {/* Simplified TitleBar */}
-      <TitleBar
-        fileName={fileName}
-        scenesCount={scenes.length}
-        onOpenVideoFile={handleOpenVideoFile}
+    <div className="app-shell">
+      {/* Left Slim Vertical Dock (inspired by Image 1 & 2) */}
+      <DockBar
+        activeView={activeView}
+        setActiveView={setActiveView}
         onLoadDemo={handleLoadDemo}
-        onAddStop={handleAddStop}
-        onStartPresentation={() => setIsPresentationOpen(true)}
+        onStartPresentation={() => {
+          if (scenes.length > 0 && videoUrl) setIsPresentationOpen(true);
+        }}
         hasVideo={Boolean(videoUrl)}
+        scenesCount={scenes.length}
       />
 
-      {/* Main Workspace */}
-      <div className="app-workspace">
-        <Sidebar
-          scenes={scenes}
-          selectedSceneId={selectedSceneId}
-          currentTime={currentTime}
-          onSelectScene={(scene) => setSelectedSceneId(scene.id)}
+      {/* Main App Content Viewport */}
+      <div className="app-main-viewport">
+        {/* Modern TopBar with segmented tabs */}
+        <TitleBar
+          fileName={fileName}
+          scenesCount={scenes.length}
+          activeView={activeView}
+          setActiveView={setActiveView}
+          onOpenVideoFile={handleOpenVideoFile}
+          onLoadDemo={handleLoadDemo}
           onAddStop={handleAddStop}
-          onDeleteScene={handleDeleteScene}
-          onUpdateScene={handleUpdateScene}
-          onSeek={handleSeek}
+          onStartPresentation={() => setIsPresentationOpen(true)}
           hasVideo={Boolean(videoUrl)}
         />
 
-        <main className="app-editor-main">
-          <VideoPlayer
-            videoUrl={videoUrl}
-            videoRef={videoRef}
-            scenes={scenes}
-            currentTime={currentTime}
-            duration={duration}
-            isPlaying={isPlaying}
-            onTimeUpdate={(time) => setCurrentTime(time)}
-            onDurationChange={(dur) => setDuration(dur)}
-            onTogglePlay={handleTogglePlay}
-            onSeek={handleSeek}
-            onAddStop={handleAddStop}
-            onOpenVideoFile={handleOpenVideoFile}
-            onLoadDemo={handleLoadDemo}
-          />
-        </main>
+        {/* Floating Cards Grid (inspired by Image 1, 2, & 3) */}
+        <div className="app-cards-container">
+          {/* Main Video & Scrubber Card */}
+          <div className="card-column-main">
+            <VideoPlayer
+              videoUrl={videoUrl}
+              videoRef={videoRef}
+              scenes={scenes}
+              currentTime={currentTime}
+              duration={duration}
+              isPlaying={isPlaying}
+              onTimeUpdate={(time) => setCurrentTime(time)}
+              onDurationChange={(dur) => setDuration(dur)}
+              onTogglePlay={handleTogglePlay}
+              onSeek={handleSeek}
+              onAddStop={handleAddStop}
+              onOpenVideoFile={handleOpenVideoFile}
+              onLoadDemo={handleLoadDemo}
+            />
+          </div>
+
+          {/* Right Column: Scenes Card */}
+          <div className="card-column-side">
+            <Sidebar
+              scenes={scenes}
+              selectedSceneId={selectedSceneId}
+              currentTime={currentTime}
+              duration={duration}
+              onSelectScene={(scene) => setSelectedSceneId(scene.id)}
+              onAddStop={handleAddStop}
+              onDeleteScene={handleDeleteScene}
+              onUpdateScene={handleUpdateScene}
+              onSeek={handleSeek}
+              hasVideo={Boolean(videoUrl)}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Fullscreen Video Presentation Mode */}
+      {/* Fullscreen Video Presentation Mode (Auto-pauses at scene stops, Arrow Keys to advance) */}
       {isPresentationOpen && videoUrl && scenes.length > 0 && (
         <PresentationPreview
           videoUrl={videoUrl}
@@ -205,17 +228,6 @@ export function App() {
           onClose={() => setIsPresentationOpen(false)}
         />
       )}
-
-      {/* Minimal Status Bar */}
-      <StatusBar
-        scenesCount={scenes.length}
-        currentTime={currentTime}
-        duration={duration}
-        fileName={fileName}
-        onStartPresentation={() => {
-          if (scenes.length > 0 && videoUrl) setIsPresentationOpen(true);
-        }}
-      />
     </div>
   );
 }

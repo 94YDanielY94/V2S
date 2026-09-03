@@ -4,6 +4,8 @@ import { Play, Plus, Upload, Sparkles } from 'lucide-react';
 interface TitleBarProps {
   fileName: string | null;
   scenesCount: number;
+  activeView: 'editor' | 'scenes';
+  setActiveView: (view: 'editor' | 'scenes') => void;
   onOpenVideoFile: (file: File) => void;
   onLoadDemo: () => void;
   onAddStop: () => void;
@@ -14,6 +16,8 @@ interface TitleBarProps {
 export const TitleBar: React.FC<TitleBarProps> = ({
   fileName,
   scenesCount,
+  activeView,
+  setActiveView,
   onOpenVideoFile,
   onLoadDemo,
   onAddStop,
@@ -23,13 +27,37 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <header className="app-titlebar">
-      <div className="titlebar-left">
-        <span className="titlebar-title">Video to Slide</span>
-        {fileName && <span className="titlebar-filename">— {fileName}</span>}
+    <header className="app-topbar">
+      {/* Title & Video Info */}
+      <div className="topbar-left">
+        <h1 className="topbar-heading">Video to Slide</h1>
+        {fileName ? (
+          <span className="topbar-tag">{fileName}</span>
+        ) : (
+          <span className="topbar-tag muted">No video loaded</span>
+        )}
       </div>
 
-      <div className="titlebar-actions">
+      {/* Segmented Pill Tabs (Inspired by Image 1, 2, & 3) */}
+      <div className="topbar-center">
+        <div className="segmented-pill-group">
+          <button
+            className={`pill-tab ${activeView === 'editor' ? 'active' : ''}`}
+            onClick={() => setActiveView('editor')}
+          >
+            Editor & Timeline
+          </button>
+          <button
+            className={`pill-tab ${activeView === 'scenes' ? 'active' : ''}`}
+            onClick={() => setActiveView('scenes')}
+          >
+            Scene Stops ({scenesCount})
+          </button>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="topbar-right">
         <input
           type="file"
           ref={fileInputRef}
@@ -45,44 +73,33 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         />
 
         <button
-          className="btn-toolbar"
+          className="btn-pill-secondary"
           onClick={() => fileInputRef.current?.click()}
-          title="Import continuous presentation video"
         >
           <Upload size={14} />
           <span>Open Video</span>
         </button>
 
-        <button
-          className="btn-toolbar"
-          onClick={onLoadDemo}
-          title="Load demo video with 4 continuous scenes"
-        >
+        <button className="btn-pill-secondary" onClick={onLoadDemo}>
           <Sparkles size={14} />
           <span>Demo Video</span>
         </button>
 
         {hasVideo && (
-          <button
-            className="btn-toolbar"
-            onClick={onAddStop}
-            title="Mark current frame as a scene stop point (Hotkey: K or S)"
-          >
+          <button className="btn-pill-secondary" onClick={onAddStop}>
             <Plus size={14} />
-            <span>Add Scene Stop</span>
+            <span>Add Stop</span>
           </button>
         )}
 
-        <div className="toolbar-separator" />
-
         <button
-          className="btn-toolbar btn-present"
+          className="btn-pill-primary"
           onClick={onStartPresentation}
           disabled={!hasVideo || scenesCount === 0}
-          title="Start fullscreen presentation mode (Hotkey: F5)"
+          title="Start fullscreen presentation (F5)"
         >
           <Play size={14} />
-          <span>Present ({scenesCount} {scenesCount === 1 ? 'scene' : 'scenes'})</span>
+          <span>Present</span>
         </button>
       </div>
     </header>
