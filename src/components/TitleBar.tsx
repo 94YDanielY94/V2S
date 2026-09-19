@@ -1,106 +1,141 @@
-import React, { useRef } from 'react';
-import { Play, Plus, Upload, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Home, X, Minus, Square, Copy } from 'lucide-react';
+import type { PresentationTab } from '../types';
 
 interface TitleBarProps {
-  fileName: string | null;
-  scenesCount: number;
-  activeView: 'editor' | 'scenes';
-  setActiveView: (view: 'editor' | 'scenes') => void;
-  onOpenVideoFile: (file: File) => void;
-  onLoadDemo: () => void;
-  onAddStop: () => void;
-  onStartPresentation: () => void;
-  hasVideo: boolean;
+  tabs: PresentationTab[];
+  activeTabId: string;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  onGoToHome: () => void;
+  onNewPresentation: () => void;
+  activeTab: PresentationTab | null;
 }
 
 export const TitleBar: React.FC<TitleBarProps> = ({
-  fileName,
-  scenesCount,
-  activeView,
-  setActiveView,
-  onOpenVideoFile,
-  onLoadDemo,
-  onAddStop,
-  onStartPresentation,
-  hasVideo,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onGoToHome,
+  onNewPresentation,
+  activeTab: _activeTab,
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    if (window.electronAPI?.isMaximized) {
+      window.electronAPI.isMaximized().then(setIsMaximized).catch(() => {});
+    }
+    if (window.electronAPI?.onMaximizeChange) {
+      const unsub = window.electronAPI.onMaximizeChange(setIsMaximized);
+      return unsub;
+    }
+  }, []);
+
+  const handleMinimize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.electronAPI?.minimizeWindow();
+  };
+
+  const handleMaximize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.electronAPI?.maximizeWindow();
+  };
+
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.electronAPI?.closeWindow();
+  };
 
   return (
-    <header className="app-topbar">
-      {/* Title & Video Info */}
+    <header className="app-topbar" onDoubleClick={handleMaximize}>
+      {/* Left: Brand + Home Button + Tab Strip (as in Figma image.png) */}
       <div className="topbar-left">
-        <h1 className="topbar-heading">Video to Slide</h1>
-        {fileName ? (
-          <span className="topbar-tag">{fileName}</span>
-        ) : (
-          <span className="topbar-tag muted">No video loaded</span>
-        )}
-      </div>
+        
+        {/* Home Icon Button */}
+        <button
+          className={`tab-home-btn ${activeTabId === 'home' ? 'active' : ''}`}
+          onClick={onGoToHome}
+          title="Home page (Saved presentations)"
+          aria-label="Home"
+        >
+          <Home size={18} />
+        </button>
 
-      {/* Segmented Pill Tabs (Inspired by Image 1, 2, & 3) */}
-      <div className="topbar-center">
-        <div className="segmented-pill-group">
+        {/* Tabs Bar */}
+        <div className="tab-strip">
+          {tabs.map((tab) => {
+            const isActive = activeTabId === tab.id;
+            return (
+              <div
+                key={tab.id}
+                className={`tab-item ${isActive ? 'active' : ''}`}
+                onClick={() => onSelectTab(tab.id)}
+                title={tab.title}
+              >
+                {/* <Play size={13} className="tab-play-icon" /> */}
+                <span className="tab-title">{tab.title}</span>
+                <button
+                  className="tab-close-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  title="Close tab"
+                  aria-label="Close tab"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            );
+          })}
+
+          {/* Plus icon to add new tab (Open video) */}
           <button
-            className={`pill-tab ${activeView === 'editor' ? 'active' : ''}`}
-            onClick={() => setActiveView('editor')}
+            className="tab-add-btn"
+            onClick={onNewPresentation}
+            title="New presentation (Open video)"
+            aria-label="New presentation"
           >
-            Editor & Timeline
-          </button>
-          <button
-            className={`pill-tab ${activeView === 'scenes' ? 'active' : ''}`}
-            onClick={() => setActiveView('scenes')}
-          >
-            Scene Stops ({scenesCount})
+            <Plus size={17} />
           </button>
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Right: Quick Settings + Theme + Window Controls */}
       <div className="topbar-right">
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) {
-              onOpenVideoFile(file);
-              e.target.value = '';
-            }
-          }}
-          accept="video/*"
-          style={{ display: 'none' }}
-        />
+       
 
-        <button
-          className="btn-pill-secondary"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload size={14} />
-          <span>Open Video</span>
-        </button>
-
-        <button className="btn-pill-secondary" onClick={onLoadDemo}>
-          <Sparkles size={14} />
-          <span>Demo Video</span>
-        </button>
-
-        {hasVideo && (
-          <button className="btn-pill-secondary" onClick={onAddStop}>
-            <Plus size={14} />
-            <span>Add Stop</span>
+        {/* Window Controls: Minimize, Maximize / Restore, Close */}
+        <div className="window-controls-group">
+          <button
+            className="btn-win-control"
+            onClick={handleMinimize}
+            title="Minimize"
+            aria-label="Minimize"
+          >
+            <Minus size={16} />
           </button>
-        )}
 
-        <button
-          className="btn-pill-primary"
-          onClick={onStartPresentation}
-          disabled={!hasVideo || scenesCount === 0}
-          title="Start fullscreen presentation (F5)"
-        >
-          <Play size={14} />
-          <span>Present</span>
-        </button>
+          <button
+            className="btn-win-control"
+            onClick={handleMaximize}
+            title={isMaximized ? 'Restore' : 'Maximize'}
+            aria-label="Maximize"
+          >
+            {isMaximized ? <Copy size={14} /> : <Square size={14} />}
+          </button>
+
+          <button
+            className="btn-win-control btn-win-close"
+            onClick={handleClose}
+            title="Close"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
     </header>
   );

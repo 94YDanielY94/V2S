@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 function createWindow() {
@@ -7,13 +7,31 @@ function createWindow() {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: 'Video to Slide',
-    backgroundColor: '#1e1e1e',
-    autoHideMenuBar: true,
+    title: 'Bulletpoint',
+    backgroundColor: '#181818',
+    frame: false, // Frameless window so navigation and window controls are in one unified bar
+    titleBarStyle: 'hidden',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false
+      webSecurity: false,
+    },
+  });
+
+  win.on('maximize', () => {
+    try {
+      win.webContents.send('window-maximize-changed', true);
+    } catch {
+      // Ignored
+    }
+  });
+
+  win.on('unmaximize', () => {
+    try {
+      win.webContents.send('window-maximize-changed', false);
+    } catch {
+      // Ignored
     }
   });
 
@@ -41,5 +59,43 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+// Window Control IPC listeners
+ipcMain.on('window-minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.minimize();
+});
+
+ipcMain.on('window-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.close();
+});
+
+ipcMain.handle('window-is-maximized', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return win ? win.isMaximized() : false;
+});
+
+ipcMain.on('set-theme', (event, theme) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    try {
+      win.setBackgroundColor(theme === 'light' ? '#eeeeee' : '#181818');
+    } catch {
+      // Ignored
+    }
   }
 });
