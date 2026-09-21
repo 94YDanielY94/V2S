@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { SceneStop } from '../types';
 import { formatTime, parseTimeToSeconds } from '../utils/time';
-import { Plus, Trash2, Clock, Check, Edit2, Play } from 'lucide-react';
+import { Plus, Trash2, Clock, Check, Edit2, Play, RotateCw } from 'lucide-react';
 
 interface SidebarProps {
   scenes: SceneStop[];
@@ -47,11 +47,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const startEditTime = (scene: SceneStop) => {
     setEditingTimeId(scene.id);
-    setTempTime(formatTime(scene.timestamp, false));
+    setTempTime(formatTime(scene.timestamp, false, duration));
   };
 
   const saveTime = (id: string) => {
-    const parsed = parseTimeToSeconds(tempTime);
+    const parsed = parseTimeToSeconds(tempTime, duration);
     if (parsed !== null && parsed >= 0) {
       onUpdateScene(id, { timestamp: parsed });
     }
@@ -76,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         disabled={!hasVideo}
       >
         <Plus size={14} />
-        <span>Add Stop at {formatTime(currentTime, false)}</span>
+        <span>Add Stop at {formatTime(currentTime, false, duration)}</span>
       </button>
 
       {/* Scenes List */}
@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={scene.id}
                   className={`scene-card ${isSelected ? 'selected' : ''} ${
                     isCurrent ? 'active-playback' : ''
-                  }`}
+                  } ${scene.isLooping ? 'has-loop' : ''}`}
                   onClick={() => {
                     onSelectScene(scene);
                     onSeek(scene.timestamp);
@@ -134,9 +134,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           title="Click to seek. Double-click to edit time."
                         >
                           <Clock size={11} />
-                          <span>{formatTime(scene.timestamp, false)}</span>
+                          <span>{formatTime(scene.timestamp, false, duration)}</span>
                         </button>
                       )}
+
+                      <button
+                        className={`btn-card-loop ${scene.isLooping ? 'active' : ''}`}
+                        onClick={() => onUpdateScene(scene.id, { isLooping: !scene.isLooping })}
+                        title={
+                          scene.isLooping
+                            ? 'Looper active: Scene strip loops in presentation (Click to turn off)'
+                            : 'Click to make this scene strip loop in presentation'
+                        }
+                      >
+                        <RotateCw size={11} className={scene.isLooping ? 'animate-spin' : ''} />
+                        <span>{scene.isLooping ? 'Looping' : 'Loop'}</span>
+                      </button>
 
                       <button
                         className="btn-card-del"
@@ -212,11 +225,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div className="stat-col">
           <span className="stat-label">Video Length</span>
-          <span className="stat-val">{formatTime(duration, false)}</span>
+          <span className="stat-val">{formatTime(duration, false, duration)}</span>
         </div>
         <div className="stat-col">
           <span className="stat-label">Playhead</span>
-          <span className="stat-val">{formatTime(currentTime, false)}</span>
+          <span className="stat-val">{formatTime(currentTime, false, duration)}</span>
         </div>
       </div>
     </div>

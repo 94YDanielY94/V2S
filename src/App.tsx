@@ -7,7 +7,7 @@ import { SettingsModal } from './components/SettingsModal';
 import type { SceneStop, VideoClip, SavedPresentation, PresentationTab, AppSettings } from './types';
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from './utils/settings';
 import { getTotalDuration, getClipForGlobalTime } from './utils/stitch';
-import { formatTime } from './utils/time';
+import { formatTime, setGlobalVideoDuration } from './utils/time';
 import {
   savePresentationToStorage,
   savePresentationMetadata,
@@ -112,6 +112,13 @@ export function App() {
     if (activeTabId === 'home') return null;
     return tabs.find((t) => t.id === activeTabId) || null;
   }, [tabs, activeTabId]);
+
+  // Synchronize global video duration for formatTime and parseTimeToSeconds
+  useEffect(() => {
+    if (activeTab && activeTab.duration !== undefined && activeTab.duration > 0) {
+      setGlobalVideoDuration(activeTab.duration);
+    }
+  }, [activeTab?.duration]);
 
   // Auto-save debounce per tab (optional via settings)
   const triggerAutoSaveForTab = useCallback((
@@ -472,6 +479,7 @@ export function App() {
       name: `${prefix} ${activeTab.scenes.length + 1}`,
       timestamp: parseFloat(time.toFixed(2)),
       capturedImage: frameImage,
+      isLooping: false,
     };
 
     const updatedScenes = [...activeTab.scenes, newScene].sort((a, b) => a.timestamp - b.timestamp);
@@ -847,6 +855,7 @@ export function App() {
               ? Math.max(0, activeTab.scenes.findIndex((s) => s.id === activeTab.selectedSceneId))
               : 0
           }
+          onUpdateScene={handleUpdateScene}
           onClose={() => setIsPresentationOpen(false)}
         />
       )}

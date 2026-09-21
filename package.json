@@ -1,7 +1,9 @@
 {
   "name": "video-to-slide-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Turn continuous videos into interactive slide presentations",
+  "author": "94YDanielY94 <danielyo7216@gmail.com>",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,6 +12,9 @@
     "electron:start": "wait-on tcp:5173 && electron electron/main.cjs",
     "start": "electron electron/main.cjs",
     "build": "tsc -b && vite build",
+    "dist": "pnpm build && electron-builder",
+    "dist:win": "pnpm build && electron-builder --win",
+    "dist:dir": "pnpm build && electron-builder --dir",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -26,9 +31,46 @@
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
     "electron": "^44.1.1",
+    "electron-builder": "^26.15.3",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.danieldy.v2s",
+    "productName": "V2S",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "V2S"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "94YDanielY94",
+      "repo": "V2S"
+    }
   }
 }

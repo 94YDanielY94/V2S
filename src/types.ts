@@ -3,6 +3,7 @@ export interface SceneStop {
   name: string;
   timestamp: number; // seconds in continuous / stitched timeline
   capturedImage?: string;
+  isLooping?: boolean; // When true, scene strip loops in presentation mode
 }
 
 export interface VideoClip {

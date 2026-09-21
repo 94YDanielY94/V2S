@@ -1174,9 +1174,9 @@ button {
   color: var(--text-secondary);
 }
 
-/* 4. Video Filmstrip Track (Thumbnail rounded cards - Middle Row) */
+/* 4. Video Track Bar (Middle Row) */
 .timeline-filmstrip-track {
-  height: 72px;
+  height: 48px;
   position: relative;
   margin: 6px 0 8px 0;
   display: flex;
@@ -1326,22 +1326,30 @@ button {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   background-color: var(--bg-card);
   border: 1px solid var(--border-medium);
   cursor: pointer;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  min-width: 8px;
 }
 
 .filmstrip-card:hover {
+  background-color: var(--bg-card-hover);
   border-color: var(--border-dark);
+}
+
+.filmstrip-card.intro-segment {
+  opacity: 0.65;
+  border-style: dashed;
 }
 
 /* Standard Black & White Selected Highlight (NO GLOW) */
 .filmstrip-card.selected-neon-highlight {
   border: 2px solid var(--text-primary);
+  background-color: var(--bg-card-subtle);
   box-shadow: none;
   z-index: 4;
 }
@@ -1349,58 +1357,177 @@ button {
 [data-theme="light"] .filmstrip-card.selected-neon-highlight,
 .app-shell.light .filmstrip-card.selected-neon-highlight {
   border: 2px solid #000000;
+  background-color: #eaeaea;
   box-shadow: none;
-}
-
-.filmstrip-bg-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.filmstrip-placeholder-bg {
-  width: 100%;
-  height: 100%;
-  background-color: var(--bg-card-subtle);
-}
-
-.filmstrip-card-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.15) 60%, transparent 100%);
-  pointer-events: none;
 }
 
 .filmstrip-card-meta {
   position: absolute;
-  bottom: 6px;
-  left: 10px;
-  right: 10px;
+  inset: 0;
+  padding: 0 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
 }
 
 .filmstrip-card-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 .filmstrip-card-time {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
-  color: #e5e5e5;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  color: var(--text-muted);
+  background: var(--bg-canvas);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.filmstrip-card.selected-neon-highlight .filmstrip-card-time {
+  border-color: var(--border-medium);
+  color: var(--text-secondary);
+}
+
+/* Looper Strip Styles */
+.filmstrip-card.is-looping {
+  background-color: rgba(14, 165, 233, 0.18);
+  border-color: rgba(14, 165, 233, 0.45);
+}
+
+.filmstrip-card.is-looping:hover {
+  background-color: rgba(14, 165, 233, 0.25);
+  border-color: rgba(14, 165, 233, 0.65);
+}
+
+.filmstrip-card.is-looping.selected-neon-highlight {
+  background-color: rgba(14, 165, 233, 0.28);
+  border: 2px solid var(--text-primary);
+}
+
+[data-theme="light"] .filmstrip-card.is-looping,
+.app-shell.light .filmstrip-card.is-looping {
+  background-color: rgba(2, 132, 199, 0.12);
+  border-color: rgba(2, 132, 199, 0.4);
+}
+
+[data-theme="light"] .filmstrip-card.is-looping:hover,
+.app-shell.light .filmstrip-card.is-looping:hover {
+  background-color: rgba(2, 132, 199, 0.18);
+  border-color: rgba(2, 132, 199, 0.6);
+}
+
+[data-theme="light"] .filmstrip-card.is-looping.selected-neon-highlight,
+.app-shell.light .filmstrip-card.is-looping.selected-neon-highlight {
+  background-color: rgba(2, 132, 199, 0.18);
+  border: 2px solid #000000;
+}
+
+.btn-strip-loop {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-light);
+  background: var(--bg-canvas);
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-strip-loop:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-dark);
+}
+
+.btn-strip-loop.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  box-shadow: none;
+}
+
+[data-theme="light"] .btn-strip-loop.active,
+.app-shell.light .btn-strip-loop.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0369a1;
+  box-shadow: none;
+}
+
+.btn-strip-loop-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Timeline Chip Looper Badge */
+.chip-loop-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0284c7;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 1px 3px;
+  font-size: 8px;
+  flex-shrink: 0;
+}
+
+.scene-chip-pill.is-looping {
+  border-color: rgba(14, 165, 233, 0.5);
+}
+
+/* Sidebar Looper Button & Card */
+.btn-card-loop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+
+.btn-card-loop:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-dark);
+}
+
+.btn-card-loop.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  box-shadow: none;
+}
+
+.scene-card.has-loop {
+  border-left: 3px solid #0284c7;
 }
 
 /* Left & Right Capsule Grab Handles on Selected Segment (Black & White) */
@@ -1426,7 +1553,7 @@ button {
 
 .handle-pill-grip {
   width: 4px;
-  height: 28px;
+  height: 22px;
   border-radius: 999px;
   background-color: #ffffff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
@@ -2042,6 +2169,54 @@ button {
 .transition-badge.end-transition {
   background-color: #3b82f6;
   color: #ffffff;
+}
+
+.transition-badge.looper-presentation-badge {
+  background-color: #0284c7;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.btn-overlay-icon.active-loop {
+  background-color: #0284c7;
+  color: #ffffff;
+  border-color: #38bdf8;
+  box-shadow: none;
+}
+
+.status-playing.looper-status {
+  color: #38bdf8;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-paused.looper-ready-status {
+  color: #38bdf8;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 2.5s linear infinite;
+  transform-origin: center center;
+  display: inline-block;
 }
 
 .topbar-save-status {
@@ -2933,6 +3108,34 @@ button {
   padding: 12px 20px;
   border-top: 1px solid var(--border-light);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   background-color: var(--bg-card-subtle);
 }
+
+.settings-version-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background-color: var(--bg-card-subtle);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.settings-version-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: inherit;
+}
+
+.home-footer-version {
+  margin-top: 28px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  user-select: none;
+}
+

@@ -108,7 +108,7 @@ export const SavedProjectsModal: React.FC<SavedProjectsModalProps> = ({
                       </div>
                       {item.totalDuration > 0 && (
                         <div className="saved-detail-pill">
-                          {formatTime(item.totalDuration, false)}
+                          {formatTime(item.totalDuration, false, item.totalDuration)}
                         </div>
                       )}
                     </div>

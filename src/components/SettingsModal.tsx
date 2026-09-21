@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { AppSettings, SavedPresentation } from '../types';
 import { exportAllProjectsJSON } from '../utils/settings';
+import { APP_VERSION } from '../version';
 
 interface SettingsModalProps {
   settings: AppSettings;
@@ -65,10 +66,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Modal Header */}
         <div className="settings-modal-header">
           <div className="settings-modal-title-wrap">
-            
             <div>
               <h2 className="settings-modal-title">Preferences & Settings</h2>
             </div>
+            <span className="settings-version-badge">v{APP_VERSION}</span>
           </div>
           <button className="btn btn-icon" onClick={onClose} title="Close (Esc)">
             <X size={16} />
@@ -638,6 +639,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Modal Footer */}
         <div className="settings-modal-footer">
+          <span className="settings-version-text">V2S v{APP_VERSION}</span>
           <button className="btn" onClick={onClose}>
             <span>Done</span>
           </button>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Film, Plus, Play, Trash2, Settings } from 'lucide-react';
 import type { SavedPresentation } from '../types';
 import { formatTime, formatRelativeTime } from '../utils/time';
+import { APP_VERSION } from '../version';
 
 interface HomePageProps {
   savedList: SavedPresentation[];
@@ -84,7 +85,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                       
                       {item.totalDuration > 0 && (
                         <span className="dashboard-badge-dur">
-                          {formatTime(item.totalDuration, false)}
+                          {formatTime(item.totalDuration, false, item.totalDuration)}
                         </span>
                       )}
                     </div>
@@ -150,6 +151,9 @@ export const HomePage: React.FC<HomePageProps> = ({
             <span>Present with Arrow Keys (F5)</span>
           </div>
         </div> */}
+        <div className="home-footer-version">
+          <span>v{APP_VERSION}</span>
+        </div>
       </div>
     </div>
   );

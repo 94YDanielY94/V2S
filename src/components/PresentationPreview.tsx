@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { SceneStop, VideoClip, AppSettings } from '../types';
-import { X, ChevronLeft, ChevronRight, Maximize, Minimize, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Maximize, Minimize, RotateCcw, CheckCircle2, RotateCw } from 'lucide-react';
 import { formatTime } from '../utils/time';
 import { getClipForGlobalTime } from '../utils/stitch';
 
@@ -11,6 +11,7 @@ interface PresentationPreviewProps {
   totalDuration: number;
   initialSceneIndex?: number;
   settings?: AppSettings;
+  onUpdateScene?: (id: string, updates: Partial<SceneStop>) => void;
   onClose: () => void;
 }
 
@@ -21,12 +22,15 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
   totalDuration,
   initialSceneIndex = 0,
   settings,
+  onUpdateScene,
   onClose,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(
     Math.max(0, Math.min(initialSceneIndex, scenes.length - 1))
   );
   const [isPlayingBetweenScenes, setIsPlayingBetweenScenes] = useState(false);
+  const [isLoopingScene, setIsLoopingScene] = useState(false);
+  const [isLoopExitPending, setIsLoopExitPending] = useState(false);
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [isTargetEnd, setIsTargetEnd] = useState(false);
   const [isAtEnd, setIsAtEnd] = useState(false);
@@ -41,6 +45,14 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const controlsTimeoutRef = useRef<number | null>(null);
   const isInitializedRef = useRef(false);
+  const lastLoopSeekTimeRef = useRef<number>(0);
+  const isLoopingSceneRef = useRef(false);
+  const isLoopExitPendingRef = useRef(false);
+  const currentIndexRef = useRef(currentIndex);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   const currentScene = scenes[currentIndex];
 
@@ -97,33 +109,145 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
     }
   }, [settings?.presentationSpeed, activeClipIndex]);
 
-  // Right Arrow / Forward:
-  // 1 click: plays smoothly to next scene (or instant if configured)
-  // 2+ clicks while transitioning: jumps forward directly to that specific keyframe without animating
-  const handleForward = useCallback(() => {
+  // Toggle looping for current scene
+  const toggleCurrentSceneLoop = useCallback(() => {
+    if (!currentScene) return;
+    const newLoop = !isLoopingScene;
+    isLoopingSceneRef.current = newLoop;
+    setIsLoopingScene(newLoop);
+    if (isLoopExitPendingRef.current) {
+      isLoopExitPendingRef.current = false;
+      setIsLoopExitPending(false);
+    }
+    if (newLoop) {
+      syncToGlobalTime(currentScene.timestamp, true);
+    } else {
+      videoRef.current?.pause();
+      syncToGlobalTime(currentScene.timestamp, false);
+    }
+    if (onUpdateScene) {
+      onUpdateScene(currentScene.id, { isLooping: newLoop });
+    }
+  }, [currentScene, isLoopingScene, syncToGlobalTime, onUpdateScene]);
+
+  // Core Forward / Advance handler:
+  // - If at end: replays from beginning.
+  // - If loop exit already pending (second click while finishing loop): skips remainder and advances to next slide immediately.
+  // - If currently looping: finishes current loop cycle, then auto-flows into the next scene like a normal slide!
+  // - If currently paused on a loop slide: clicks Next to START the loop!
+  // - If playing between scenes (fast-forward click): snaps immediately to target scene and pauses.
+  // - If normal slide (paused): plays through normal slide and pauses at the end of the scene (next stop).
+  const handleAdvance = useCallback(() => {
     if (!videoRef.current || scenes.length === 0) return;
 
+    // 1. Replay from beginning if at presentation end
     if (isAtEnd) {
-      // Replay from beginning
       setIsAtEnd(false);
       setIsTargetEnd(false);
+      currentIndexRef.current = 0;
       setCurrentIndex(0);
+      isLoopingSceneRef.current = false;
+      setIsLoopingScene(false);
+      isLoopExitPendingRef.current = false;
+      setIsLoopExitPending(false);
+      setIsPlayingBetweenScenes(false);
+      setTargetIndex(null);
+      videoRef.current.pause();
       syncToGlobalTime(scenes[0]?.timestamp ?? 0, false);
       return;
     }
 
-    // Instant transition mode
+    // 2. Second click while already finishing loop -> skip remainder and proceed immediately
+    if (isLoopExitPendingRef.current) {
+      isLoopExitPendingRef.current = false;
+      setIsLoopExitPending(false);
+      isLoopingSceneRef.current = false;
+      setIsLoopingScene(false);
+
+      if (currentIndex < scenes.length - 1) {
+        const nextIdx = currentIndex + 1;
+        const nextScene = scenes[nextIdx];
+        currentIndexRef.current = nextIdx;
+        setCurrentIndex(nextIdx);
+
+        if (nextScene?.isLooping) {
+          // Next scene is also a loop slide: pause at its start (waiting for presenter to start its loop)
+          setIsPlayingBetweenScenes(false);
+          setTargetIndex(null);
+          videoRef.current.pause();
+          syncToGlobalTime(nextScene.timestamp, false);
+        } else {
+          // Next scene is normal: auto-play it like a normal slide and stop at its end
+          if (nextIdx < scenes.length - 1) {
+            setTargetIndex(nextIdx + 1);
+            setIsTargetEnd(false);
+          } else {
+            setIsTargetEnd(true);
+            setTargetIndex(null);
+          }
+          setIsPlayingBetweenScenes(true);
+          syncToGlobalTime(nextScene.timestamp, true);
+        }
+      } else {
+        videoRef.current.pause();
+        syncToGlobalTime(totalDuration, false);
+        setIsAtEnd(true);
+        setIsPlayingBetweenScenes(false);
+        setIsTargetEnd(false);
+      }
+      return;
+    }
+
+    // 3. First click while actively looping -> finish this loop cycle, and auto-play the next scene!
+    if (isLoopingSceneRef.current) {
+      isLoopExitPendingRef.current = true;
+      setIsLoopExitPending(true);
+      videoRef.current.play().catch(() => {});
+      return;
+    }
+
+    // 4. Current scene is a loop slide, but currently paused -> Presenter clicks Next to START THE LOOP!
+    if (currentScene?.isLooping && !isPlayingBetweenScenes) {
+      isLoopingSceneRef.current = true;
+      setIsLoopingScene(true);
+      isLoopExitPendingRef.current = false;
+      setIsLoopExitPending(false);
+      setIsPlayingBetweenScenes(false);
+      syncToGlobalTime(currentScene.timestamp, true);
+      return;
+    }
+
+    // 5. Instant transition mode
     if (settings?.presentationTransition === 'instant') {
       if (currentIndex < scenes.length - 1) {
         const nextIdx = currentIndex + 1;
-        videoRef.current.pause();
-        syncToGlobalTime(scenes[nextIdx].timestamp, false);
+        currentIndexRef.current = nextIdx;
         setCurrentIndex(nextIdx);
+        isLoopingSceneRef.current = false;
+        setIsLoopingScene(false);
+        isLoopExitPendingRef.current = false;
+        setIsLoopExitPending(false);
+        setIsPlayingBetweenScenes(false);
+        videoRef.current?.pause();
+        syncToGlobalTime(scenes[nextIdx].timestamp, false);
       } else if (currentIndex === scenes.length - 1) {
         if (settings.presentationLoop) {
-          syncToGlobalTime(scenes[0]?.timestamp ?? 0, false);
+          currentIndexRef.current = 0;
           setCurrentIndex(0);
+          isLoopingSceneRef.current = false;
+          setIsLoopingScene(false);
+          isLoopExitPendingRef.current = false;
+          setIsLoopExitPending(false);
+          setIsPlayingBetweenScenes(false);
+          videoRef.current?.pause();
+          syncToGlobalTime(scenes[0]?.timestamp ?? 0, false);
         } else {
+          isLoopingSceneRef.current = false;
+          setIsLoopingScene(false);
+          isLoopExitPendingRef.current = false;
+          setIsLoopExitPending(false);
+          setIsPlayingBetweenScenes(false);
+          videoRef.current?.pause();
           syncToGlobalTime(totalDuration, false);
           setIsAtEnd(true);
         }
@@ -131,33 +255,32 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
       return;
     }
 
+    // 6. Click detected while transitioning between scenes -> snap immediately to target stop and pause
     if (isPlayingBetweenScenes) {
-      // Multiple clicks detected! Skip animation and jump to next target immediately
-      const currentDest = isTargetEnd ? scenes.length : (targetIndex ?? currentIndex + 1);
-      const nextDest = currentDest + 1;
-
-      if (nextDest >= scenes.length) {
-        // Exceeded last scene -> snap to end of video without animating
-        videoRef.current.pause();
+      videoRef.current.pause();
+      if (isTargetEnd) {
+        setIsPlayingBetweenScenes(false);
+        setIsTargetEnd(false);
+        setTargetIndex(null);
         syncToGlobalTime(totalDuration, false);
         setIsAtEnd(true);
+      } else if (targetIndex !== null && scenes[targetIndex]) {
+        const destIdx = targetIndex;
+        const targetScene = scenes[destIdx];
+        currentIndexRef.current = destIdx;
+        setCurrentIndex(destIdx);
         setIsPlayingBetweenScenes(false);
-        setIsTargetEnd(false);
         setTargetIndex(null);
-      } else {
-        // Jump directly to that specific keyframe without animating
-        videoRef.current.pause();
-        const targetTime = scenes[nextDest].timestamp;
-        syncToGlobalTime(targetTime, false);
-        setCurrentIndex(nextDest);
-        setIsPlayingBetweenScenes(false);
-        setIsTargetEnd(false);
-        setTargetIndex(null);
+        isLoopingSceneRef.current = false;
+        setIsLoopingScene(false);
+        isLoopExitPendingRef.current = false;
+        setIsLoopExitPending(false);
+        syncToGlobalTime(targetScene.timestamp, false);
       }
       return;
     }
 
-    // Normal forward playback
+    // 7. Normal forward playback: plays scene smoothly and stops at the end of the scene (next stop)
     if (currentIndex < scenes.length - 1) {
       const nextIdx = currentIndex + 1;
       setTargetIndex(nextIdx);
@@ -183,10 +306,11 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
     }
   }, [
     isAtEnd,
+    currentIndex,
+    currentScene,
     isPlayingBetweenScenes,
     isTargetEnd,
     targetIndex,
-    currentIndex,
     scenes,
     totalDuration,
     clips.length,
@@ -194,101 +318,27 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
     settings,
   ]);
 
-  // Space key:
-  // 1 click: advances smoothly to next stop
-  // 2 clicks (double-space): immediately finishes/snaps to that next stop without waiting for animation
-  const handleSpace = useCallback(() => {
-    if (!videoRef.current || scenes.length === 0) return;
+  const handleForward = handleAdvance;
+  const handleSpace = handleAdvance;
 
-    if (isAtEnd) {
-      // Restart from first scene
-      setIsAtEnd(false);
-      setIsTargetEnd(false);
-      setCurrentIndex(0);
-      syncToGlobalTime(scenes[0]?.timestamp ?? 0, false);
-      return;
-    }
-
-    // Instant transition mode
-    if (settings?.presentationTransition === 'instant') {
-      if (currentIndex < scenes.length - 1) {
-        const nextIdx = currentIndex + 1;
-        videoRef.current.pause();
-        syncToGlobalTime(scenes[nextIdx].timestamp, false);
-        setCurrentIndex(nextIdx);
-      } else if (currentIndex === scenes.length - 1) {
-        if (settings.presentationLoop) {
-          syncToGlobalTime(scenes[0]?.timestamp ?? 0, false);
-          setCurrentIndex(0);
-        } else {
-          syncToGlobalTime(totalDuration, false);
-          setIsAtEnd(true);
-        }
-      }
-      return;
-    }
-
-    if (isPlayingBetweenScenes) {
-      // Double space detected! Instantly complete transition to target
-      videoRef.current.pause();
-      if (isTargetEnd) {
-        syncToGlobalTime(totalDuration, false);
-        setIsAtEnd(true);
-        setIsPlayingBetweenScenes(false);
-        setIsTargetEnd(false);
-      } else if (targetIndex !== null && scenes[targetIndex]) {
-        const targetTime = scenes[targetIndex].timestamp;
-        syncToGlobalTime(targetTime, false);
-        setCurrentIndex(targetIndex);
-        setIsPlayingBetweenScenes(false);
-        setTargetIndex(null);
-      }
-      return;
-    }
-
-    // Single space: start smooth playback to next stop
-    if (currentIndex < scenes.length - 1) {
-      const nextIdx = currentIndex + 1;
-      setTargetIndex(nextIdx);
-      setIsTargetEnd(false);
-      setIsPlayingBetweenScenes(true);
-
-      if (clips.length > 0) {
-        syncToGlobalTime(scenes[currentIndex].timestamp, true);
-      } else {
-        videoRef.current.play().catch(() => {});
-      }
-    } else if (currentIndex === scenes.length - 1) {
-      setIsTargetEnd(true);
-      setTargetIndex(null);
-      setIsPlayingBetweenScenes(true);
-
-      if (clips.length > 0) {
-        syncToGlobalTime(scenes[currentIndex].timestamp, true);
-      } else {
-        videoRef.current.play().catch(() => {});
-      }
-    }
-  }, [
-    isAtEnd,
-    isPlayingBetweenScenes,
-    isTargetEnd,
-    targetIndex,
-    currentIndex,
-    scenes,
-    totalDuration,
-    clips.length,
-    syncToGlobalTime,
-    settings,
-  ]);
-
-  // Left Arrow / Backward:
-  // Steps backward without animating
+  // Backward (Left Arrow / Prev button):
+  // Steps backward without animating, always pauses at destination
   const handleBackward = useCallback(() => {
     if (!videoRef.current || scenes.length === 0) return;
 
+    if (isLoopingScene || isLoopExitPending) {
+      isLoopExitPendingRef.current = false;
+      setIsLoopExitPending(false);
+      isLoopingSceneRef.current = false;
+      setIsLoopingScene(false);
+      videoRef.current.pause();
+      syncToGlobalTime(scenes[currentIndex]?.timestamp ?? 0, false);
+      return;
+    }
+
     if (isPlayingBetweenScenes) {
-      // Cancel playback and snap directly back to current scene stop without animating
+      isLoopExitPendingRef.current = false;
+      setIsLoopExitPending(false);
       videoRef.current.pause();
       syncToGlobalTime(scenes[currentIndex].timestamp, false);
       setIsPlayingBetweenScenes(false);
@@ -302,25 +352,33 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
       setIsTargetEnd(false);
       setIsPlayingBetweenScenes(false);
       const lastIdx = scenes.length - 1;
+      currentIndexRef.current = lastIdx;
       setCurrentIndex(lastIdx);
+      isLoopingSceneRef.current = false;
+      setIsLoopingScene(false);
+      videoRef.current.pause();
       syncToGlobalTime(scenes[lastIdx].timestamp, false);
       return;
     }
 
     if (currentIndex > 0) {
       const prevIdx = currentIndex - 1;
-      syncToGlobalTime(scenes[prevIdx].timestamp, false);
+      currentIndexRef.current = prevIdx;
       setCurrentIndex(prevIdx);
       setIsPlayingBetweenScenes(false);
       setTargetIndex(null);
       setIsTargetEnd(false);
+      isLoopingSceneRef.current = false;
+      setIsLoopingScene(false);
+      videoRef.current.pause();
+      syncToGlobalTime(scenes[prevIdx].timestamp, false);
     }
-  }, [currentIndex, isPlayingBetweenScenes, isAtEnd, scenes, syncToGlobalTime]);
+  }, [currentIndex, isLoopingScene, isLoopExitPending, isPlayingBetweenScenes, isAtEnd, scenes, syncToGlobalTime]);
 
-  // Monitor video playback with requestAnimationFrame for frame-accurate pausing
+  // Monitor video playback with requestAnimationFrame for frame-accurate pausing & looping
   useEffect(() => {
     const checkBoundary = () => {
-      if (isPlayingBetweenScenes && videoRef.current) {
+      if ((isPlayingBetweenScenes || isLoopingScene || isLoopExitPending) && videoRef.current) {
         // Calculate global current time
         let currentGlobalTime = videoRef.current.currentTime;
         if (clips.length > 0) {
@@ -346,31 +404,114 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
           }
         }
 
-        if (isTargetEnd) {
-          // Reached or approaching end of the full video timeline
-          const endLimit = totalDuration > 0 ? totalDuration - 0.08 : 999999;
-          if (currentGlobalTime >= endLimit || videoRef.current.ended) {
-            videoRef.current.pause();
-            setIsPlayingBetweenScenes(false);
-            setIsTargetEnd(false);
-            setIsAtEnd(true);
-          }
-        } else if (targetIndex !== null && scenes[targetIndex]) {
-          const targetTime = scenes[targetIndex].timestamp;
+        // 1. Scene strip loop handler:
+        // - While looping: rewinds back to loopStart upon reaching loopEnd
+        // - When user clicked Next while looping (isLoopExitPending): finishes this loop iteration,
+        //   then auto-plays into the next scene like a normal slide, and stops at the end of that scene!
+        if (isLoopingScene || isLoopExitPending) {
+          const curIdx = currentIndexRef.current;
+          const loopStart = scenes[curIdx]?.timestamp ?? 0;
+          const loopEnd =
+            curIdx < scenes.length - 1
+              ? scenes[curIdx + 1].timestamp
+              : (totalDuration > 0 ? totalDuration : 999999);
+
           const playbackRate = videoRef.current.playbackRate || 1;
-          // Compensate for media thread halt latency (~15-20ms) so the video pauses
-          // directly on the target slide frame without overshooting into the next frame
-          const leadTime = Math.max(0.015, 0.02 * playbackRate);
+          const leadTime = Math.max(0.02, 0.03 * playbackRate);
 
-          if (currentGlobalTime >= targetTime - leadTime) {
-            videoRef.current.pause();
-            setCurrentIndex(targetIndex);
-            setIsPlayingBetweenScenes(false);
-            setTargetIndex(null);
+          if (
+            loopEnd > loopStart + 0.08 &&
+            (currentGlobalTime >= loopEnd - leadTime || videoRef.current.ended)
+          ) {
+            if (isLoopExitPendingRef.current) {
+              // User clicked Next while looping: loop iteration finished!
+              isLoopExitPendingRef.current = false;
+              setIsLoopExitPending(false);
+              isLoopingSceneRef.current = false;
+              setIsLoopingScene(false);
 
-            // Avoid micro-seeks within the same frame (< 50ms) that cause the jarring rewind jerk
-            if (Math.abs(currentGlobalTime - targetTime) > 0.05) {
-              syncToGlobalTime(targetTime, false);
+              if (curIdx < scenes.length - 1) {
+                const nextIdx = curIdx + 1;
+                const nextScene = scenes[nextIdx];
+                currentIndexRef.current = nextIdx;
+                setCurrentIndex(nextIdx);
+
+                if (nextScene?.isLooping) {
+                  // Next scene is also a loop scene: pause at its start, wait for presenter to click Next to start loop!
+                  setIsPlayingBetweenScenes(false);
+                  setTargetIndex(null);
+                  videoRef.current.pause();
+                  syncToGlobalTime(nextScene.timestamp, false);
+                } else {
+                  // Next scene is normal: auto-plays the next scene, then stops at the end of that scene!
+                  if (nextIdx < scenes.length - 1) {
+                    setTargetIndex(nextIdx + 1);
+                    setIsTargetEnd(false);
+                    setIsPlayingBetweenScenes(true);
+                  } else {
+                    setIsTargetEnd(true);
+                    setTargetIndex(null);
+                    setIsPlayingBetweenScenes(true);
+                  }
+                  // Continue playing into next scene smoothly
+                  videoRef.current.play().catch(() => {});
+                }
+              } else {
+                // Loop scene was the last scene: reach end of video
+                videoRef.current.pause();
+                syncToGlobalTime(totalDuration, false);
+                setIsAtEnd(true);
+                setIsPlayingBetweenScenes(false);
+                setIsTargetEnd(false);
+              }
+            } else if (isLoopingSceneRef.current) {
+              // Normal looper: rewind to start of current scene strip
+              const now = performance.now();
+              if (now - lastLoopSeekTimeRef.current > 250) {
+                lastLoopSeekTimeRef.current = now;
+                syncToGlobalTime(loopStart, true);
+              }
+            }
+          }
+        }
+
+        // 2. Normal forward playback between scenes handler:
+        // Plays smoothly from scene start and stops at the end of the scene (targetTime)
+        if (isPlayingBetweenScenes) {
+          if (isTargetEnd) {
+            // Reached or approaching end of the full video timeline
+            const endLimit = totalDuration > 0 ? totalDuration - 0.08 : 999999;
+            if (currentGlobalTime >= endLimit || videoRef.current.ended) {
+              videoRef.current.pause();
+              setIsPlayingBetweenScenes(false);
+              setIsTargetEnd(false);
+              setIsAtEnd(true);
+            }
+          } else if (targetIndex !== null && scenes[targetIndex]) {
+            const targetScene = scenes[targetIndex];
+            const targetTime = targetScene.timestamp;
+            const playbackRate = videoRef.current.playbackRate || 1;
+            // Compensate for media thread halt latency (~15-20ms) so the video pauses
+            // directly on the target slide frame without overshooting into the next frame
+            const leadTime = Math.max(0.015, 0.02 * playbackRate);
+
+            if (currentGlobalTime >= targetTime - leadTime) {
+              currentIndexRef.current = targetIndex;
+              setCurrentIndex(targetIndex);
+              setIsPlayingBetweenScenes(false);
+              setTargetIndex(null);
+
+              // Crucial: ALWAYS pause when arriving at the target scene stop!
+              // (If targetScene is a loop scene, presenter clicks Next to start the loop).
+              isLoopingSceneRef.current = false;
+              setIsLoopingScene(false);
+              isLoopExitPendingRef.current = false;
+              setIsLoopExitPending(false);
+              videoRef.current.pause();
+              // Avoid micro-seeks within the same frame (< 50ms) that cause jarring rewind jerk
+              if (Math.abs(currentGlobalTime - targetTime) > 0.05) {
+                syncToGlobalTime(targetTime, false);
+              }
             }
           }
         }
@@ -388,6 +529,8 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
     };
   }, [
     isPlayingBetweenScenes,
+    isLoopingScene,
+    isLoopExitPending,
     isTargetEnd,
     targetIndex,
     scenes,
@@ -449,6 +592,12 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
           }
           break;
 
+        case 'l':
+        case 'L':
+          e.preventDefault();
+          toggleCurrentSceneLoop();
+          break;
+
         case 'f':
         case 'F':
           e.preventDefault();
@@ -459,7 +608,7 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSpace, handleForward, handleBackward, handleClosePresentation, toggleFullscreen]);
+  }, [handleSpace, handleForward, handleBackward, handleClosePresentation, toggleFullscreen, toggleCurrentSceneLoop]);
 
   // Auto-hide controls overlay after inactivity
   const handleMouseMove = () => {
@@ -508,7 +657,7 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
               <span className="scene-counter completed">Completed</span>
               <span className="scene-name-display">End of Presentation</span>
               <span className="scene-time-display">
-                ({formatTime(totalDuration, false)})
+                ({formatTime(totalDuration, false, totalDuration)})
               </span>
             </>
           ) : (
@@ -518,12 +667,27 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
               </span>
               <span className="scene-name-display">{currentScene?.name}</span>
               <span className="scene-time-display">
-                ({formatTime(currentScene?.timestamp ?? 0, false)})
+                ({formatTime(currentScene?.timestamp ?? 0, false, totalDuration)})
               </span>
             </>
           )}
 
-          {isTargetEnd ? (
+          {isLoopExitPending ? (
+            <span className="transition-badge looper-presentation-badge">
+              <RotateCw size={12} className="animate-spin" />
+              <span>Finishing Scene &bull; Flowing into Scene {currentIndex + 2}...</span>
+            </span>
+          ) : isLoopingScene ? (
+            <span className="transition-badge looper-presentation-badge">
+              <RotateCw size={12} className="animate-spin" />
+              <span>Looping Strip &bull; Press Next or Space to finish &amp; advance</span>
+            </span>
+          ) : currentScene?.isLooping && !isPlayingBetweenScenes ? (
+            <span className="transition-badge looper-presentation-badge">
+              <RotateCw size={12} />
+              <span>Loop Ready &bull; Press Next to Start</span>
+            </span>
+          ) : isTargetEnd ? (
             <span className="transition-badge end-transition">
               Playing to End of Video...
             </span>
@@ -538,6 +702,21 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
         )}
 
         <div className="header-actions">
+          <button
+            className={`btn-overlay-icon ${isLoopingScene || isLoopExitPending ? 'active-loop' : ''}`}
+            onClick={toggleCurrentSceneLoop}
+            title={
+              isLoopExitPending
+                ? 'Finishing Scene (Click to keep looping)'
+                : isLoopingScene
+                ? 'Scene looping is ON (Click or press L to stop loop)'
+                : currentScene?.isLooping
+                ? 'Loop ready (Click to start loop now or press L to disable loop)'
+                : 'Enable loop for this scene strip (L)'
+            }
+          >
+            <RotateCw size={15} className={isLoopingScene || isLoopExitPending ? 'animate-spin' : ''} />
+          </button>
           <button
             className="btn-overlay-icon"
             onClick={toggleFullscreen}
@@ -559,7 +738,7 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
       <button
         className={`presentation-nav-btn nav-prev ${showControls ? 'visible' : ''}`}
         onClick={handleBackward}
-        disabled={currentIndex === 0 && !isPlayingBetweenScenes && !isAtEnd}
+        disabled={currentIndex === 0 && !isPlayingBetweenScenes && !isAtEnd && !isLoopingScene && !isLoopExitPending}
         title="Previous Scene (← Left Arrow)"
       >
         <ChevronLeft size={32} />
@@ -572,6 +751,12 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
         title={
           isAtEnd
             ? 'Replay from Start (→ Right Arrow or Space)'
+            : isLoopExitPending
+            ? 'Finishing Scene &bull; Click to skip immediately (→ Right Arrow or Space)'
+            : isLoopingScene
+            ? 'Finish Scene & Flow to Next Slide (→ Right Arrow or Space)'
+            : currentScene?.isLooping && !isPlayingBetweenScenes
+            ? 'Start Looping Scene (→ Right Arrow or Space)'
             : currentIndex === scenes.length - 1
             ? 'Play to End of Video (→ Right Arrow or Space)'
             : 'Next Scene (→ Right Arrow or Space)'
@@ -596,6 +781,21 @@ export const PresentationPreview: React.FC<PresentationPreviewProps> = ({
             {isAtEnd ? (
               <span className="status-completed">
                 <CheckCircle2 size={13} /> Presentation Complete &bull; Press &rarr; to Replay or Esc to exit
+              </span>
+            ) : isLoopExitPending ? (
+              <span className="status-playing looper-status">
+                <RotateCw size={13} className="animate-spin" />
+                <span>Finishing Scene {currentIndex + 1} &bull; Flowing into Scene {currentIndex + 2}... (Click Next to skip immediately)</span>
+              </span>
+            ) : isLoopingScene ? (
+              <span className="status-playing looper-status">
+                <RotateCw size={13} className="animate-spin" />
+                <span>Looping Scene {currentIndex + 1} ({formatTime(currentScene?.timestamp ?? 0, false, totalDuration)} &ndash; {formatTime(currentIndex < scenes.length - 1 ? scenes[currentIndex + 1].timestamp : totalDuration, false, totalDuration)}) &bull; Click Next (or Space) to finish scene &amp; flow to next slide</span>
+              </span>
+            ) : currentScene?.isLooping && !isPlayingBetweenScenes ? (
+              <span className="status-paused looper-ready-status">
+                <RotateCw size={13} />
+                <span>Scene {currentIndex + 1} of {scenes.length} (Loop Slide) &bull; Press Next or Space to start loop</span>
               </span>
             ) : isTargetEnd ? (
               <span className="status-playing">

@@ -19,9 +19,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { SceneStop, VideoClip, AppSettings } from '../types';
-import { formatTime } from '../utils/time';
+import { formatTime, setGlobalVideoDuration } from '../utils/time';
 import { getClipForGlobalTime, getClipBoundaries } from '../utils/stitch';
-import { captureFrameAtTimestamp } from '../utils/capture';
 
 /**
  * Intentional Dot Calculator
@@ -109,11 +108,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 }) => {
   // Timeline zoom level (1x to 3x) matching reference image 3
   const [zoom, setZoom] = useState(1);
-  const [isDraggingSlider, setIsDraggingSlider] = useState(false);
-  const [isAnimatingZoom, setIsAnimatingZoom] = useState(false);
   const zoomAnimRef = useRef<number | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const prevZoomRef = useRef(zoom);
+  const latestZoomRef = useRef(zoom);
+  const isWheelZoomingRef = useRef(false);
+  const wheelRafIdRef = useRef<number | null>(null);
+  const pendingWheelStateRef = useRef<{
+    cursorClientX: number;
+    zoomMultiplier: number;
+    panDeltaX: number;
+    isZooming: boolean;
+  }>({
+    cursorClientX: 0,
+    zoomMultiplier: 1,
+    panDeltaX: 0,
+    isZooming: false,
+  });
+
+  // Keep latestZoomRef synchronized with React state
+  useEffect(() => {
+    latestZoomRef.current = zoom;
+  }, [zoom]);
+
+  // Synchronize global video duration for formatTime and parseTimeToSeconds
+  useEffect(() => {
+    if (duration > 0) {
+      setGlobalVideoDuration(duration);
+    }
+  }, [duration]);
 
 
   // Custom scrollbar state reserving room under container
@@ -133,7 +156,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (zoomAnimRef.current !== null) {
       cancelAnimationFrame(zoomAnimRef.current);
       zoomAnimRef.current = null;
-      setIsAnimatingZoom(false);
     }
   }, []);
 
@@ -150,7 +172,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
-      setIsAnimatingZoom(true);
       const startTime = performance.now();
 
       const step = (now: number) => {
@@ -166,7 +187,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } else {
           setZoom(clampedTarget);
           zoomAnimRef.current = null;
-          setIsAnimatingZoom(false);
         }
       };
 
@@ -183,14 +203,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [trimmingHandle, setTrimmingHandle] = useState<{
     sceneId: string;
     type: 'start' | 'end';
+    targetSceneId: string;
+    minTime: number;
+    maxTime: number;
   } | null>(null);
 
   // Inline editing state for scene name
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [tempName, setTempName] = useState('');
-
-  // Fallback frame capture cache for scene thumbnails
-  const [dynamicThumbnails, setDynamicThumbnails] = useState<Record<string, string>>({});
 
   const trackContainerRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
@@ -268,21 +288,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [isPlaying, playheadPercent]);
 
-  // Automatically generate missing frame thumbnails for scenes so cards display real preview
-  useEffect(() => {
-    const src = clips[0]?.url || videoUrl || '';
-    if (!src || scenes.length === 0) return;
-
-    scenes.forEach((scene) => {
-      if (!scene.capturedImage && !dynamicThumbnails[scene.id]) {
-        captureFrameAtTimestamp(src, scene.timestamp).then((img) => {
-          if (img) {
-            setDynamicThumbnails((prev) => ({ ...prev, [scene.id]: img }));
-          }
-        });
-      }
-    });
-  }, [scenes, videoUrl, clips, dynamicThumbnails]);
 
   // Calculate timeline time from mouse X coordinate relative to track
   const getTimeFromClientX = useCallback(
@@ -324,8 +329,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
       onSeek(parseFloat(time.toFixed(2)));
     } else if (trimmingHandle) {
-      const clamped = parseFloat(Math.max(0, Math.min(time, duration)).toFixed(2));
-      onUpdateScene(trimmingHandle.sceneId, { timestamp: clamped });
+      const clamped = parseFloat(
+        Math.max(trimmingHandle.minTime, Math.min(trimmingHandle.maxTime, time)).toFixed(2)
+      );
+      onUpdateScene(trimmingHandle.targetSceneId, { timestamp: clamped });
       onSeek(clamped);
     }
   };
@@ -335,7 +342,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const handleMouseUp = () => {
       setIsScrubbing(false);
       setTrimmingHandle(null);
-      setIsDraggingSlider(false);
     };
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('touchend', handleMouseUp);
@@ -360,8 +366,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         onSeek(parseFloat(time.toFixed(2)));
       } else if (trimmingHandle) {
-        const clamped = parseFloat(Math.max(0, Math.min(time, duration)).toFixed(2));
-        onUpdateScene(trimmingHandle.sceneId, { timestamp: clamped });
+        const clamped = parseFloat(
+          Math.max(trimmingHandle.minTime, Math.min(trimmingHandle.maxTime, time)).toFixed(2)
+        );
+        onUpdateScene(trimmingHandle.targetSceneId, { timestamp: clamped });
         onSeek(clamped);
       }
     };
@@ -369,11 +377,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
   }, [isScrubbing, trimmingHandle, duration, onSeek, onUpdateScene]);
 
-  // Anchor scroll viewport smoothly around playhead (or visible center) on zoom changes
-  useEffect(() => {
+  // Listen to scroll events to update custom scrollbar metrics
+  const updateScrollMetrics = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    setScrollMetrics({
+      scrollLeft: el.scrollLeft,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    });
+  }, []);
+
+  // Anchor scroll viewport smoothly around playhead/visible center (for toolbar buttons/slider)
+  useLayoutEffect(() => {
     const prevZoom = prevZoomRef.current;
     prevZoomRef.current = zoom;
 
+    // If zoom was driven by trackpad/mouse-wheel gesture, skip toolbar playhead anchoring
+    if (isWheelZoomingRef.current) {
+      return;
+    }
+
+    // Otherwise, for toolbar +/- buttons or slider zoom, anchor smoothly around the playhead/center
     if (viewportRef.current && duration > 0 && Math.abs(prevZoom - zoom) > 0.001) {
       const viewport = viewportRef.current;
       const viewportWidth = viewport.clientWidth;
@@ -404,19 +429,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const clampedScrollLeft = Math.max(0, Math.min(maxScroll, targetScrollLeft));
 
       viewport.scrollLeft = clampedScrollLeft;
+      updateScrollMetrics();
     }
-  }, [zoom, currentTime, duration]);
-
-  // Listen to scroll events to update custom scrollbar metrics
-  const updateScrollMetrics = useCallback(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    setScrollMetrics({
-      scrollLeft: el.scrollLeft,
-      scrollWidth: el.scrollWidth,
-      clientWidth: el.clientWidth,
-    });
-  }, []);
+  }, [zoom, currentTime, duration, updateScrollMetrics]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -441,39 +456,125 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [updateScrollMetrics, zoom, duration, clips]);
 
-  // When zoomed out completely (zoom <= 1.01), ensure scrollLeft resets to 0 and scrollbar disappears
+  // When zoomed out completely (zoom <= 1.005), ensure scrollLeft resets to 0 and scrollbar disappears
   useEffect(() => {
-    if (zoom <= 1.01 && viewportRef.current) {
+    if (zoom <= 1.005 && viewportRef.current && !isWheelZoomingRef.current) {
       viewportRef.current.scrollLeft = 0;
       updateScrollMetrics();
     }
   }, [zoom, updateScrollMetrics]);
 
-  // Smooth wheel zoom with Ctrl/Alt keys or touchpad pinch-to-zoom; horizontal panning otherwise
+  // High-Performance Trackpad & Mouse Wheel Handler
+  // Uses requestAnimationFrame batching, multiplicative zoom, and direct DOM sync for zero-glitter 60/120fps motion.
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
 
+    let gestureEndTimer: number | null = null;
+
     const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.altKey || e.metaKey) {
-        e.preventDefault();
-        cancelZoomAnim();
-        const delta = -e.deltaY * 0.002;
-        setZoom((prev) => {
-          const next = Math.max(1, Math.min(3, prev + delta));
-          return parseFloat(next.toFixed(3));
+      // 1. Prevent default browser page zoom (Ctrl+wheel) and history navigation swipe
+      e.preventDefault();
+      cancelZoomAnim();
+
+      // 2. Normalize deltas across pixel vs line vs page scroll modes
+      let dy = e.deltaY;
+      let dx = e.deltaX;
+      if (e.deltaMode === 1) {
+        dy *= 24;
+        dx *= 24;
+      } else if (e.deltaMode === 2) {
+        dy *= 200;
+        dx *= 200;
+      }
+
+      // Check for trackpad pinch or Ctrl/Alt/Meta zoom modifier
+      const isZoom = e.ctrlKey || e.altKey || e.metaKey;
+
+      if (isZoom) {
+        isWheelZoomingRef.current = true;
+        // Multiplicative zoom scaling: smooth and uniform across full 1x to 3x range
+        // ~2 to 3 natural drags span the full 1.0 to 3.0 range
+        const step = Math.exp(-dy * 0.005);
+        pendingWheelStateRef.current.zoomMultiplier *= step;
+        pendingWheelStateRef.current.cursorClientX = e.clientX;
+        pendingWheelStateRef.current.isZooming = true;
+      } else {
+        // Two-finger slide or mouse wheel pan
+        const dominantDelta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+        pendingWheelStateRef.current.panDeltaX += dominantDelta;
+      }
+
+      // Clear wheel zooming flag 150ms after gesture ends
+      if (gestureEndTimer !== null) {
+        window.clearTimeout(gestureEndTimer);
+      }
+      gestureEndTimer = window.setTimeout(() => {
+        isWheelZoomingRef.current = false;
+        gestureEndTimer = null;
+      }, 150);
+
+      // Batch DOM mutations inside requestAnimationFrame to sync with display refresh
+      if (wheelRafIdRef.current === null) {
+        wheelRafIdRef.current = requestAnimationFrame(() => {
+          wheelRafIdRef.current = null;
+          const viewport = viewportRef.current;
+          const trackContainer = trackContainerRef.current;
+          if (!viewport) return;
+
+          const state = pendingWheelStateRef.current;
+
+          // 1. Process ZOOM
+          if (state.isZooming) {
+            const currentZoom = latestZoomRef.current;
+            const targetZoom = Math.max(1, Math.min(3, currentZoom * state.zoomMultiplier));
+            const newZoom = parseFloat(targetZoom.toFixed(3));
+
+            if (Math.abs(newZoom - currentZoom) > 0.0005) {
+              const rect = viewport.getBoundingClientRect();
+              const cursorX = Math.max(0, Math.min(viewport.clientWidth, state.cursorClientX - rect.left));
+              const currentScroll = viewport.scrollLeft;
+
+              // Analytical anchor formula: keep point under cursor perfectly stationary
+              // targetScroll = (currentScroll + cursorX) * (newZoom / currentZoom) - cursorX
+              const targetScroll = (currentScroll + cursorX) * (newZoom / currentZoom) - cursorX;
+              const maxScroll = Math.max(0, viewport.clientWidth * newZoom - viewport.clientWidth);
+              const clampedScroll = Math.max(0, Math.min(maxScroll, targetScroll));
+
+              // Synchronous direct DOM update before repaint to prevent width-scroll lag
+              if (trackContainer) {
+                trackContainer.style.width = `${newZoom * 100}%`;
+              }
+              viewport.scrollLeft = clampedScroll;
+
+              latestZoomRef.current = newZoom;
+              setZoom(newZoom);
+              updateScrollMetrics();
+            }
+
+            state.zoomMultiplier = 1;
+            state.isZooming = false;
+          }
+
+          // 2. Process PAN
+          if (state.panDeltaX !== 0) {
+            if (viewport.scrollWidth > viewport.clientWidth && latestZoomRef.current > 1.01) {
+              viewport.scrollLeft += state.panDeltaX;
+              updateScrollMetrics();
+            }
+            state.panDeltaX = 0;
+          }
         });
-      } else if (el.scrollWidth > el.clientWidth && zoom > 1.01) {
-        if (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaX) === 0) {
-          e.preventDefault();
-          el.scrollLeft += e.deltaY;
-        }
       }
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [cancelZoomAnim, zoom]);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (gestureEndTimer !== null) window.clearTimeout(gestureEndTimer);
+      if (wheelRafIdRef.current !== null) cancelAnimationFrame(wheelRafIdRef.current);
+    };
+  }, [cancelZoomAnim, updateScrollMetrics]);
 
   // Custom scrollbar calculations (room reserved under container, opacity 0 until overflow)
   // When zoom <= 1.01, the user is completely zoomed out -> scrollbar MUST disappear completely
@@ -656,7 +757,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return items;
   }, [duration, zoom]);
 
-  // Video segments for the filmstrip track
+  // Video segments for the timeline track bar
   const videoSegments = useMemo(() => {
     if (duration <= 0) return [];
     if (scenes.length === 0) {
@@ -667,7 +768,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           startTime: 0,
           endTime: duration,
           name: 'Video',
-          thumbnail: clips[0]?.thumbnail || '',
         },
       ];
     }
@@ -679,7 +779,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       startTime: number;
       endTime: number;
       name: string;
-      thumbnail?: string;
       scene?: SceneStop;
       isFirstPreStop?: boolean;
     }[] = [];
@@ -692,7 +791,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         startTime: 0,
         endTime: sorted[0].timestamp,
         name: 'Intro',
-        thumbnail: clips[0]?.thumbnail,
         isFirstPreStop: true,
       });
     }
@@ -706,12 +804,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         startTime: sc.timestamp,
         endTime: nextTime,
         name: sc.name,
-        thumbnail: sc.capturedImage || dynamicThumbnails[sc.id] || clips[0]?.thumbnail,
       });
     });
 
     return segs;
-  }, [scenes, duration, clips, dynamicThumbnails]);
+  }, [scenes, duration]);
 
 
   // Empty state when no video is loaded
@@ -862,9 +959,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           {/* Formatted Timecode Display (Shuffled to left for balanced centering) */}
           <div className="tb-timecode-box">
-            <span className="tb-time-curr">{formatTime(currentTime, settings.showMilliseconds)}</span>
+            <span className="tb-time-curr">{formatTime(currentTime, settings.showMilliseconds, duration)}</span>
             <span className="tb-time-sep">/</span>
-            <span className="tb-time-dur">{formatTime(duration, settings.showMilliseconds)}</span>
+            <span className="tb-time-dur">{formatTime(duration, settings.showMilliseconds, duration)}</span>
           </div>
         </div>
 
@@ -940,14 +1037,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               max="3"
               step="0.005"
               value={zoom}
-              onMouseDown={() => {
-                cancelZoomAnim();
-                setIsDraggingSlider(true);
-              }}
-              onTouchStart={() => {
-                cancelZoomAnim();
-                setIsDraggingSlider(true);
-              }}
+              onMouseDown={() => cancelZoomAnim()}
+              onTouchStart={() => cancelZoomAnim()}
               onChange={(e) => {
                 cancelZoomAnim();
                 setZoom(parseFloat(e.target.value));
@@ -1074,10 +1165,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             className="timeline-tracks-content"
             style={{
               width: `${zoom * 100}%`,
-              transition:
-                isDraggingSlider || isAnimatingZoom
-                  ? 'none'
-                  : 'width 0.22s cubic-bezier(0.25, 1, 0.5, 1)',
+              transition: 'none',
               willChange: 'width',
             }}
             onMouseDown={handleTimelineMouseDown}
@@ -1125,21 +1213,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               })}
             </div>
 
-            {/* 2. Video Filmstrip Track (Thumbnail Segments - Middle Row) */}
+            {/* 2. Video Timeline Bar Track (Middle Row - Clean Solid Bar) */}
             <div className="timeline-filmstrip-track">
-              {videoSegments.map((segment) => {
+              {videoSegments.map((segment, segIdx) => {
                 const isSelected = segment.sceneId !== null && segment.sceneId === selectedSceneId;
+                const isIntro = segment.sceneId === null;
+                const isLooping = Boolean(segment.scene?.isLooping);
                 const segLeft = duration > 0 ? (segment.startTime / duration) * 100 : 0;
                 const segWidth =
                   duration > 0 ? ((segment.endTime - segment.startTime) / duration) * 100 : 100;
 
+                const hasNextScene = Boolean(
+                  videoSegments.slice(segIdx + 1).find((s) => s.scene != null)?.scene
+                );
+
                 return (
                   <div
                     key={segment.id}
-                    className={`filmstrip-card ${isSelected ? 'selected-neon-highlight' : ''}`}
+                    className={`filmstrip-card ${isSelected ? 'selected-neon-highlight' : ''} ${
+                      isIntro ? 'intro-segment' : ''
+                    } ${isLooping ? 'is-looping' : ''}`}
                     style={{
                       left: `${segLeft}%`,
-                      width: `${Math.max(1, segWidth)}%`,
+                      width: `${Math.max(0.5, segWidth)}%`,
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1148,25 +1244,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       }
                     }}
                   >
-                    {/* Background Preview Frame */}
-                    {segment.thumbnail ? (
-                      <img
-                        src={segment.thumbnail}
-                        alt={segment.name}
-                        className="filmstrip-bg-img"
-                        loading="lazy"
-                        draggable={false}
-                      />
-                    ) : (
-                      <div className="filmstrip-placeholder-bg" />
-                    )}
-
-                    {/* Gradient Overlay for Clean Look */}
-                    {/* <div className="filmstrip-card-overlay" /> */}
-
-                    {/* Segment Timecode in Corner (unobscured preview) */}
+                    {/* Bar Segment Content */}
                     <div className="filmstrip-card-meta">
-                      <span className="filmstrip-card-time">{formatTime(segment.startTime, false)}</span>
+                      <span className="filmstrip-card-title">{segment.name}</span>
+                      {segment.scene && (
+                        <button
+                          type="button"
+                          className={`btn-strip-loop ${segment.scene.isLooping ? 'active' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateScene(segment.scene!.id, { isLooping: !segment.scene!.isLooping });
+                          }}
+                          title={
+                            segment.scene.isLooping
+                              ? 'Scene strip is set to loop in presentation (Click to disable)'
+                              : 'Click to make this scene strip loop in presentation'
+                          }
+                        >
+                          <RotateCw size={10} className={segment.scene.isLooping ? 'animate-spin' : ''} />
+                          <span className="btn-strip-loop-label">{segment.scene.isLooping ? 'Loop' : 'Loop'}</span>
+                        </button>
+                      )}
+                      <span className="filmstrip-card-time">{formatTime(segment.endTime, false, duration)}</span>
                     </div>
 
                     {/* Left & Right Capsule Grab Handles on Selected Segment */}
@@ -1176,23 +1275,55 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           className="filmstrip-trim-handle handle-left"
                           onMouseDown={(e) => {
                             e.stopPropagation();
-                            setTrimmingHandle({ sceneId: segment.scene!.id, type: 'start' });
+                            const sortedScenes = [...scenes].sort((a, b) => a.timestamp - b.timestamp);
+                            const sceneIdx = sortedScenes.findIndex((s) => s.id === segment.scene!.id);
+                            const prevScene = sortedScenes[sceneIdx - 1];
+                            const nextScene = sortedScenes[sceneIdx + 1];
+                            const minTime = prevScene ? prevScene.timestamp + 0.1 : 0;
+                            const maxTime = nextScene
+                              ? nextScene.timestamp - 0.1
+                              : Math.max(0, duration - 0.1);
+                            setTrimmingHandle({
+                              sceneId: segment.scene!.id,
+                              type: 'start',
+                              targetSceneId: segment.scene!.id,
+                              minTime,
+                              maxTime,
+                            });
                           }}
                           title="Drag to trim start time"
                         >
                           <div className="handle-pill-grip" />
                         </div>
 
-                        <div
-                          className="filmstrip-trim-handle handle-right"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            setTrimmingHandle({ sceneId: segment.scene!.id, type: 'end' });
-                          }}
-                          title="Drag to trim end time"
-                        >
-                          <div className="handle-pill-grip" />
-                        </div>
+                        {hasNextScene && (
+                          <div
+                            className="filmstrip-trim-handle handle-right"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              const sortedScenes = [...scenes].sort((a, b) => a.timestamp - b.timestamp);
+                              const sceneIdx = sortedScenes.findIndex((s) => s.id === segment.scene!.id);
+                              const nextScene = sortedScenes[sceneIdx + 1];
+                              const afterNextScene = sortedScenes[sceneIdx + 2];
+                              if (nextScene) {
+                                const minTime = segment.scene!.timestamp + 0.1;
+                                const maxTime = afterNextScene
+                                  ? afterNextScene.timestamp - 0.1
+                                  : duration;
+                                setTrimmingHandle({
+                                  sceneId: segment.scene!.id,
+                                  type: 'end',
+                                  targetSceneId: nextScene.id,
+                                  minTime,
+                                  maxTime,
+                                });
+                              }
+                            }}
+                            title="Drag to trim end time"
+                          >
+                            <div className="handle-pill-grip" />
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1206,7 +1337,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     key={boundary.clipIndex}
                     className="timeline-seam-divider"
                     style={{ left: `${(boundary.timestamp / duration) * 100}%` }}
-                    title={`Stitched clip boundary at ${formatTime(boundary.timestamp, false)}`}
+                    title={`Stitched clip boundary at ${formatTime(boundary.timestamp, false, duration)}`}
                   />
                 ))}
             </div>
@@ -1232,7 +1363,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       title="Intro (before first slide)"
                     >
                       <span className="chip-tag">Intro</span>
-                      <span className="chip-time">{formatTime(segment.startTime, false)}</span>
+                      <span className="chip-time">{formatTime(segment.startTime, false, duration)}</span>
                     </div>
                   );
                 }
@@ -1244,7 +1375,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 return (
                   <div
                     key={scene.id}
-                    className={`scene-chip-pill ${isSelected ? 'selected' : ''}`}
+                    className={`scene-chip-pill ${isSelected ? 'selected' : ''} ${scene.isLooping ? 'is-looping' : ''}`}
                     style={{
                       left: `${segLeft}%`,
                       width: `calc(${segWidth}% - 4px)`,
@@ -1255,9 +1386,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onSelectScene(scene);
                       onSeek(scene.timestamp);
                     }}
-                    title={`Slide ${stopIndex + 1}: ${scene.name} (${formatTime(scene.timestamp, false)})`}
+                    title={`Slide ${stopIndex + 1}: ${scene.name} (${formatTime(scene.timestamp, false, duration)})${scene.isLooping ? ' • Looper Active' : ''}`}
                   >
-                    {/* <span className="chip-tag">Slide {stopIndex + 1}</span> */}
+                    {scene.isLooping && (
+                      <span className="chip-loop-badge" title="Looper Active: This slide loops in presentation">
+                        <RotateCw size={9} className="animate-spin" />
+                      </span>
+                    )}
 
                     {editingNameId === scene.id ? (
                       <div className="chip-edit-box" onClick={(e) => e.stopPropagation()}>
@@ -1317,7 +1452,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 className="timeline-hover-tooltip"
                 style={{ left: `${hoverX}px` }}
               >
-                {formatTime(hoverTime, true)}
+                {formatTime(hoverTime, true, duration)}
               </div>
             )}
           </div>
