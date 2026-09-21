@@ -1,7 +1,7 @@
 {
   "name": "video-to-slide-app",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Turn continuous videos into interactive slide presentations",
   "author": "94YDanielY94 <danielyo7216@gmail.com>",
   "type": "module",
