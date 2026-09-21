@@ -29,7 +29,9 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: |
+          pnpm approve-builds --all
+          pnpm install
 
       - name: Build & Publish Release to GitHub
         env:
