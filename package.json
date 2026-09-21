@@ -70,7 +70,8 @@
     "publish": {
       "provider": "github",
       "owner": "94YDanielY94",
-      "repo": "V2S"
+      "repo": "V2S",
+      "releaseType": "release"
     }
   }
 }
